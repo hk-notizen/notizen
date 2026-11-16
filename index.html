@@ -2353,7 +2353,7 @@ body.editing{overflow:hidden}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.2.1';
+const VERSION = '1.2.2';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -4870,8 +4870,8 @@ const Editor = (() => {
     ul[data-type="taskList"] li>label{-webkit-user-select:none;user-select:none}
     ul[data-type="taskList"] li>label input{width:20px;height:20px}
     img{max-width:100%;height:auto}
-    .nw-handle{position:absolute;display:none;align-items:center;justify-content:center;width:30px;height:30px;margin-top:-4px;border-radius:7px;color:#6b7280;font-size:18px;line-height:1;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;z-index:5;background:rgba(255,255,255,.85)}
-    .nw-handle:hover,.nw-handle.on{background:#e6f4ed;color:#1f8a5b}
+    .nw-handle{position:absolute;display:none;align-items:center;justify-content:center;width:30px;height:30px;margin-top:-4px;border-radius:7px;color:#1f8a5b;font-size:20px;font-weight:700;line-height:1;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;z-index:5;background:#e6f4ed;border:1px solid #9fd3b6;box-sizing:border-box}
+    .nw-handle:hover,.nw-handle.on{background:#1f8a5b;color:#fff}
     .nw-drop{position:absolute;display:none;height:3px;background:#1f8a5b;border-radius:2px;z-index:6;pointer-events:none}
     [data-nw-drag]{opacity:.35}`;
 
@@ -4903,6 +4903,9 @@ const Editor = (() => {
   <button data-cmd="insertUnorderedList" title="Aufzählung">•≡</button>
   <button data-cmd="insertOrderedList" title="Nummerierung">1≡</button>
   <button data-act="task" title="Checkliste">☑</button>
+  <span class="sep"></span>
+  <button data-act="up" title="Absatz nach oben verschieben">⬆</button>
+  <button data-act="down" title="Absatz nach unten verschieben">⬇</button>
   <span class="sep"></span>
   <button data-act="outdent" title="Einzug verkleinern">⇤</button>
   <button data-act="indent" title="Einzug vergrößern">⇥</button>
@@ -5023,6 +5026,9 @@ const Editor = (() => {
     w.addEventListener('scroll', () => { if (!drag) placeHandle(cur); }, { passive: true });
     w.addEventListener('resize', () => placeHandle(cur));
     body.addEventListener('input', () => { if (!drag) placeHandle(movableAt(doc.getSelection().anchorNode)); });
+    // Safari (iPhone) meldet die Einfügemarke nicht zuverlässig über selectionchange -> zusätzlich nach Tippen/Tasten
+    const later = (e) => setTimeout(() => { if (drag) return; const s = doc.getSelection(); placeHandle(movableAt(s && s.rangeCount && body.contains(s.anchorNode) ? s.anchorNode : e && e.target)); }, 30);
+    for (const ev of ['click', 'touchend', 'keyup', 'focus', 'pointerup']) body.addEventListener(ev, later, true);
     body.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' && !drag) placeHandle(movableAt(e.target)); });
     hd.addEventListener('pointerdown', (e) => {
       if (!cur) return;
@@ -5107,6 +5113,7 @@ const Editor = (() => {
       else if (b.dataset.act === 'task') toggleTask();
       else if (b.dataset.act === 'indent') indent(1);
       else if (b.dataset.act === 'outdent') indent(-1);
+      else if (b.dataset.act === 'up' || b.dataset.act === 'down') moveBlock(b.dataset.act === 'up' ? -1 : 1);
     });
     bindNotebookPicker();
   }
@@ -5246,6 +5253,20 @@ const Editor = (() => {
       else { const p = st.doc.createElement('p'); p.append(st.doc.createElement('br')); ul.before(p); caretInto(p, false); }
       if (!ul.children.length) ul.remove();
     }
+  }
+  /** Absatz bzw. Listenpunkt mit der Einfügemarke eine Stelle nach oben/unten (gleiche Ebene) */
+  function moveBlock(dir) {
+    const s = st.doc.getSelection();
+    const el = movableAt(s && s.rangeCount ? s.anchorNode : null);
+    if (!el) return;
+    const r = s.getRangeAt(0).cloneRange();
+    let sib = dir < 0 ? el.previousElementSibling : el.nextElementSibling;
+    while (sib && !sib.getClientRects().length) sib = dir < 0 ? sib.previousElementSibling : sib.nextElementSibling; // unsichtbare überspringen
+    if (!sib) return;
+    if (dir < 0) sib.before(el); else sib.after(el);
+    s.removeAllRanges(); s.addRange(r);
+    placeHandle(el);
+    el.scrollIntoView({ block: 'nearest' });
   }
   /** Einzug: Listenpunkte verschachteln, Absätze/Überschriften um 40 px (wie in der PC-App) */
   function indent(dir) {
