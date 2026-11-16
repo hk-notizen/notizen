@@ -2353,7 +2353,7 @@ body.editing{overflow:hidden}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.2.2';
+const VERSION = '1.2.3';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -4861,7 +4861,7 @@ const Scanner = (() => {
 const Editor = (() => {
   const ED_CSS = `
     html{-webkit-text-size-adjust:100%}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;padding:14px 16px 40vh 38px;min-height:60vh;outline:none;-webkit-user-select:text;user-select:text}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;padding:14px 16px 40vh;min-height:60vh;outline:none;-webkit-user-select:text;user-select:text}
     body:empty::before{content:"Hier schreiben …";color:#9aa1a9}
     [data-attachment],[data-webclip]{display:block;border:1px solid #d5d9de;border-radius:8px;background:#f6f7f8;padding:10px 12px;margin:.5em 0;color:#4b5563;font-size:14px;-webkit-user-select:none;user-select:none}
     [data-attachment]::before{content:"📎 " attr(data-name)}
@@ -4869,11 +4869,7 @@ const Editor = (() => {
     .fold-arrow,.fold-more{display:none!important}
     ul[data-type="taskList"] li>label{-webkit-user-select:none;user-select:none}
     ul[data-type="taskList"] li>label input{width:20px;height:20px}
-    img{max-width:100%;height:auto}
-    .nw-handle{position:absolute;display:none;align-items:center;justify-content:center;width:30px;height:30px;margin-top:-4px;border-radius:7px;color:#1f8a5b;font-size:20px;font-weight:700;line-height:1;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;z-index:5;background:#e6f4ed;border:1px solid #9fd3b6;box-sizing:border-box}
-    .nw-handle:hover,.nw-handle.on{background:#1f8a5b;color:#fff}
-    .nw-drop{position:absolute;display:none;height:3px;background:#1f8a5b;border-radius:2px;z-index:6;pointer-events:none}
-    [data-nw-drag]{opacity:.35}`;
+    img{max-width:100%;height:auto}`;
 
   const st = { el: null, frame: null, doc: null, id: null, isNew: false, base: null, initial: '', title0: '', nb0: '', saving: false, range: null };
 
@@ -4992,12 +4988,9 @@ const Editor = (() => {
     body.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && taskItemAt()) { e.preventDefault(); taskEnter(); }
     });
-    doc.addEventListener('selectionchange', () => { const s = doc.getSelection(); if (s && s.rangeCount && body.contains(s.anchorNode)) { st.range = s.getRangeAt(0).cloneRange(); if (!drag) placeHandle(movableAt(s.anchorNode)); } });
-    setupHandle(doc, body);
+    doc.addEventListener('selectionchange', () => { const s = doc.getSelection(); if (s && s.rangeCount && body.contains(s.anchorNode)) st.range = s.getRangeAt(0).cloneRange(); });
     if (o.isNew) { const p0 = body.querySelector('p'); if (p0) caretInto(p0, false); setTimeout(() => q('#edtitle').focus(), 50); }
   }
-  // ------------------------------------------------------------ Greifpunkt zum Verschieben (wie in der PC-App)
-  let hd = null, line = null, cur = null, drag = null;
   /** verschiebbare Einheit: Listen-/Checklistenpunkt, sonst Block direkt unter body */
   function movableAt(n) {
     const body = st.doc && st.doc.body;
@@ -5008,69 +5001,6 @@ const Editor = (() => {
     if (li && body.contains(li)) return li;
     while (n.parentElement && n.parentElement !== body) n = n.parentElement;
     return n.parentElement === body ? n : null;
-  }
-  function placeHandle(b) {
-    cur = b;
-    if (!hd) return;
-    if (!b || !b.getClientRects().length) { hd.style.display = 'none'; return; }
-    const w = st.frame.contentWindow, r = b.getBoundingClientRect();
-    hd.style.display = 'flex';
-    hd.style.top = (r.top + w.scrollY) + 'px';
-    hd.style.left = Math.max(2, r.left + w.scrollX - (b.tagName === 'LI' ? 52 : 34)) + 'px';
-  }
-  function setupHandle(doc, body) {
-    hd = doc.createElement('div'); hd.className = 'nw-handle'; hd.textContent = '⠿'; hd.title = 'Ziehen, um den Absatz zu verschieben';
-    line = doc.createElement('div'); line.className = 'nw-drop';
-    doc.documentElement.append(hd, line); // außerhalb von body -> wird nicht gespeichert
-    const w = doc.defaultView;
-    w.addEventListener('scroll', () => { if (!drag) placeHandle(cur); }, { passive: true });
-    w.addEventListener('resize', () => placeHandle(cur));
-    body.addEventListener('input', () => { if (!drag) placeHandle(movableAt(doc.getSelection().anchorNode)); });
-    // Safari (iPhone) meldet die Einfügemarke nicht zuverlässig über selectionchange -> zusätzlich nach Tippen/Tasten
-    const later = (e) => setTimeout(() => { if (drag) return; const s = doc.getSelection(); placeHandle(movableAt(s && s.rangeCount && body.contains(s.anchorNode) ? s.anchorNode : e && e.target)); }, 30);
-    for (const ev of ['click', 'touchend', 'keyup', 'focus', 'pointerup']) body.addEventListener(ev, later, true);
-    body.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' && !drag) placeHandle(movableAt(e.target)); });
-    hd.addEventListener('pointerdown', (e) => {
-      if (!cur) return;
-      e.preventDefault();
-      try { hd.setPointerCapture(e.pointerId); } catch {}
-      drag = { el: cur, target: null, before: true, timer: null };
-      cur.setAttribute('data-nw-drag', '1');
-      hd.classList.add('on');
-    });
-    hd.addEventListener('pointermove', (e) => {
-      if (!drag) return;
-      e.preventDefault();
-      const sibs = [...drag.el.parentElement.children].filter((x) => x !== drag.el && x.getClientRects().length);
-      let target = null, before = true;
-      for (const s of sibs) { const r = s.getBoundingClientRect(); if (e.clientY < r.top + r.height / 2) { target = s; break; } }
-      if (!target && sibs.length) { target = sibs[sibs.length - 1]; before = false; }
-      drag.target = target; drag.before = before;
-      hd.style.top = (e.clientY + w.scrollY - 12) + 'px';
-      if (target) {
-        const r = target.getBoundingClientRect(), pr = drag.el.parentElement.getBoundingClientRect();
-        line.style.display = 'block';
-        line.style.top = ((before ? r.top : r.bottom) + w.scrollY - 2) + 'px';
-        line.style.left = (pr.left + w.scrollX) + 'px';
-        line.style.width = Math.max(40, pr.width) + 'px';
-      }
-      // am Rand automatisch blättern
-      const edge = 48, h = w.innerHeight;
-      clearInterval(drag.timer);
-      if (e.clientY < edge || e.clientY > h - edge) { const dy = e.clientY < edge ? -14 : 14; drag.timer = setInterval(() => w.scrollBy(0, dy), 30); }
-    });
-    const end = () => {
-      if (!drag) return;
-      clearInterval(drag.timer);
-      const d = drag; drag = null;
-      d.el.removeAttribute('data-nw-drag');
-      line.style.display = 'none';
-      hd.classList.remove('on');
-      if (d.target) { if (d.before) d.target.before(d.el); else d.target.after(d.el); }
-      placeHandle(d.el);
-    };
-    hd.addEventListener('pointerup', end);
-    hd.addEventListener('pointercancel', end);
   }
 
   function lockEl(e) { e.setAttribute('contenteditable', 'false'); e.setAttribute('data-nw-ce', '1'); }
@@ -5083,7 +5013,6 @@ const Editor = (() => {
     // leere style-Attribute, die der Browser beim Bearbeiten erzeugt, entfernen (vorhandene bleiben)
     for (const e of c.querySelectorAll('[style=""]:not([data-nw-es])')) e.removeAttribute('style');
     for (const e of c.querySelectorAll('[data-nw-es]')) e.removeAttribute('data-nw-es');
-    for (const e of c.querySelectorAll('[data-nw-drag]')) e.removeAttribute('data-nw-drag');
     return c.innerHTML;
   }
   const changed = () => !!st.doc && (serialize() !== st.initial || q('#edtitle').value.trim() !== st.title0.trim() || q('#ednb').dataset.id !== st.nb0);
@@ -5091,7 +5020,7 @@ const Editor = (() => {
   function close(force, fromPop) {
     if (!st.el) return;
     if (!force && changed() && !confirm('Änderungen verwerfen?')) { if (fromPop) history.pushState({ edit: true }, ''); return; }
-    st.el.remove(); st.el = null; st.doc = null; st.frame = null; hd = line = cur = drag = null;
+    st.el.remove(); st.el = null; st.doc = null; st.frame = null;
     document.body.classList.remove('editing');
     if (!fromPop && history.state?.edit) history.back();
   }
@@ -5259,13 +5188,12 @@ const Editor = (() => {
     const s = st.doc.getSelection();
     const el = movableAt(s && s.rangeCount ? s.anchorNode : null);
     if (!el) return;
-    const r = s.getRangeAt(0).cloneRange();
+    const an = s.anchorNode, ao = s.anchorOffset, fn = s.focusNode, fo = s.focusOffset; // Marke merken (Bereiche verschieben sich beim Umhängen)
     let sib = dir < 0 ? el.previousElementSibling : el.nextElementSibling;
     while (sib && !sib.getClientRects().length) sib = dir < 0 ? sib.previousElementSibling : sib.nextElementSibling; // unsichtbare überspringen
     if (!sib) return;
     if (dir < 0) sib.before(el); else sib.after(el);
-    s.removeAllRanges(); s.addRange(r);
-    placeHandle(el);
+    try { s.setBaseAndExtent(an, ao, fn, fo); } catch { caretInto(el, true); }
     el.scrollIntoView({ block: 'nearest' });
   }
   /** Einzug: Listenpunkte verschachteln, Absätze/Überschriften um 40 px (wie in der PC-App) */
