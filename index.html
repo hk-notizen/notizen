@@ -225,7 +225,8 @@ body.scanning{overflow:hidden}
 .sc-edit{background:#111;color:#fff}
 .sc-edit .sc-etop{background:#1b1b1b;border-color:#333}
 .sc-ecanvas{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
-.sc-ecanvas canvas{touch-action:none;transition:transform .2s}
+.sc-ecanvas canvas{touch-action:none;transition:transform .2s,opacity .15s;box-shadow:0 2px 12px rgba(0,0,0,.5)}
+.sc-ecanvas.working canvas{opacity:.55}
 .sc-etools{padding:10px max(12px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));background:#1b1b1b}
 .sc-filters{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
 .sc-filters button{background:#2a2a2a;border:1px solid #444;color:#ddd;border-radius:16px;padding:7px 12px;font-size:14px}
@@ -2328,7 +2329,7 @@ body.scanning{overflow:hidden}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -4174,8 +4175,8 @@ const Scanner = (() => {
   <div class="sc-ecanvas"><canvas id="scecv"></canvas></div>
   <div class="sc-etools">
     <div class="sc-filters" id="scfilters">${FILTERS.map(([k, t]) => `<button data-f="${k}">${t}</button>`).join('')}</div>
-    <div class="sc-eacts"><button class="btn light" id="scefull">Ganzes Bild</button><button class="btn light" id="scerot">⟳ Drehen</button><button class="btn light" id="scedel">🗑 Löschen</button></div>
-    <p class="sc-ehint">Ecken mit dem Finger auf die Blattecken ziehen.</p>
+    <div class="sc-eacts"><button class="btn light" id="scecrop">✂ Ränder anpassen</button><button class="btn light hidden" id="scefull">Ganzes Bild</button><button class="btn light" id="scerot">⟳ Drehen</button><button class="btn light" id="scedel">🗑 Löschen</button></div>
+    <p class="sc-ehint hidden" id="scehint">Ecken mit dem Finger auf die Blattecken ziehen, dann „Ergebnis zeigen“ tippen.</p>
   </div>
 </div>
 <div class="sc-busy hidden" id="scbusy"><div class="sc-spin"></div><span id="scbusytext">Bitte warten …</span></div>`;
@@ -4239,9 +4240,10 @@ const Scanner = (() => {
     q('#sceback').onclick = () => closeEditor(false);
     q('#scedone').onclick = () => closeEditor(true);
     q('#scerot').onclick = () => { ed.rot = (ed.rot + 1) % 4; drawEditor(); };
+    q('#scecrop').onclick = () => { setEditView(ed.view === 'crop' ? 'result' : 'crop'); };
     q('#scefull').onclick = () => { ed.quad = fullQuad(ed.page.w, ed.page.h); drawEditor(); };
     q('#scedel').onclick = () => { const i = st.pages.indexOf(ed.page); if (i >= 0) { revokePage(ed.page); st.pages.splice(i, 1); } ed.page = null; q('#scedit').classList.add('hidden'); if (!st.pages.length) backToCamera(); else renderGrid(); };
-    $$('#scfilters button', st.el).forEach((b) => { b.onclick = () => { ed.filter = b.dataset.f; markFilter(); }; });
+    $$('#scfilters button', st.el).forEach((b) => { b.onclick = () => { ed.filter = b.dataset.f; markFilter(); if (ed.view !== 'result') setEditView('result'); else drawEditor(); }; });
     q('#scgrid').onclick = (e) => { const t = e.target.closest('[data-i]'); if (t) openEditor(st.pages[+t.dataset.i]); };
     bindNotebookPicker();
     bindEditorDrag();
@@ -4698,7 +4700,7 @@ const Scanner = (() => {
   }
 
   // ------------------------------------------------------------ Seite bearbeiten (Ecken, Filter, Drehen)
-  const ed = { page: null, img: null, scale: 1, quad: null, filter: 'color', rot: 0, drag: -1, box: null };
+  const ed = { page: null, img: null, scale: 1, quad: null, filter: 'color', rot: 0, drag: -1, box: null, view: 'result', seq: 0 };
   async function openEditor(page) {
     if (!page || page.kind === 'file') return;
     ed.page = page; ed.quad = (page.quad || fullQuad(page.w, page.h)).map((p) => [...p]); ed.filter = page.filter; ed.rot = page.rot;
@@ -4707,6 +4709,14 @@ const Scanner = (() => {
     markFilter();
     busy('Bild wird geladen …');
     try { ed.img = await bitmapCanvas(page.blob, 1600); } finally { busy(''); }
+    setEditView('result');
+  }
+  /** Ansicht im Bearbeiten: 'result' = fertige Seite mit Filter, 'crop' = Originalfoto mit Eckpunkten */
+  function setEditView(v) {
+    ed.view = v;
+    q('#scecrop').textContent = v === 'crop' ? '✓ Ergebnis zeigen' : '✂ Ränder anpassen';
+    q('#scefull').classList.toggle('hidden', v !== 'crop');
+    q('#scehint').classList.toggle('hidden', v !== 'crop');
     drawEditor();
   }
   function markFilter() { $$('#scfilters button', st.el).forEach((b) => b.classList.toggle('on', b.dataset.f === ed.filter)); }
@@ -4724,6 +4734,7 @@ const Scanner = (() => {
     renderGrid();
   }
   function drawEditor() {
+    if (ed.view === 'result') return drawResult();
     const c = q('#scecv'), host = c.parentElement;
     if (!ed.img) return;
     const r = host.getBoundingClientRect(), dpr = devicePixelRatio || 1;
@@ -4744,6 +4755,41 @@ const Scanner = (() => {
     ctx.lineWidth = 2; ctx.strokeStyle = '#2ecc71'; ctx.stroke();
     for (const p of pts) { ctx.beginPath(); ctx.arc(p[0], p[1], 13, 0, Math.PI * 2); ctx.fillStyle = 'rgba(46,204,113,.35)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke(); }
   }
+  /** Vorschau der fertigen Seite (entzerrt, Filter, Drehung) in Bildschirmauflösung */
+  async function drawResult() {
+    if (!ed.img) return;
+    const seq = ++ed.seq;
+    const c = q('#scecv'), host = c.parentElement;
+    host.classList.add('working');
+    let out = null;
+    try {
+      await loadCV();
+      if (seq !== ed.seq || !ed.img) return;
+      const s = ed.img.width / ed.page.w;
+      const m = cv.imread(ed.img);
+      let w = null, e = null;
+      try {
+        w = ScanCore.warp(cv, m, ed.quad.map((p) => [p[0] * s, p[1] * s]), 1600);
+        e = ScanCore.enhance(cv, w, ed.filter);
+        if (ed.rot) cv.rotate(e, e, [cv.ROTATE_90_CLOCKWISE, cv.ROTATE_180, cv.ROTATE_90_COUNTERCLOCKWISE][ed.rot - 1]);
+        out = document.createElement('canvas');
+        cv.imshow(out, e);
+      } finally { m.delete(); w?.delete(); e?.delete(); }
+    } catch (err) { console.error(err); toast('Vorschau nicht möglich: ' + err.message, 4000); }
+    finally { if (seq === ed.seq) host.classList.remove('working'); }
+    if (!out || seq !== ed.seq) return;
+    const r = host.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+    const k = Math.min((r.width - 28) / out.width, (r.height - 28) / out.height);
+    const w = Math.round(out.width * k), h = Math.round(out.height * k);
+    c.style.transform = '';
+    c.style.width = w + 'px'; c.style.height = h + 'px';
+    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    const ctx = c.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(out, 0, 0, c.width, c.height);
+    out.width = out.height = 1;
+  }
   function bindEditorDrag() {
     const c = q('#scecv');
     const toImg = (e) => {
@@ -4755,7 +4801,7 @@ const Scanner = (() => {
       return [(x + cw / 2) / ed.scale, (y + ch / 2) / ed.scale];
     };
     c.addEventListener('pointerdown', (e) => {
-      if (!ed.page) return;
+      if (!ed.page || ed.view !== 'crop') return;
       const p = toImg(e);
       let best = -1, bd = 44 / ed.scale;
       ed.quad.forEach((qp, i) => { const d = Math.hypot(qp[0] - p[0], qp[1] - p[1]); if (d < bd) { bd = d; best = i; } });
