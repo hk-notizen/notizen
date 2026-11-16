@@ -2255,7 +2255,7 @@ body.note-wide .view-inner{max-width:none}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.0.8';
+const VERSION = '1.0.9';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -2643,6 +2643,83 @@ function makeSnippet(text, terms, phrases) {
   return (start > 0 ? '… ' : '') + highlight(s, terms, phrases);
 }
 
+/* ---- Boolesche Suche: UND/ODER/NICHT (AND/OR/NOT), Klammern ----
+   Liefert null, wenn die Eingabe keine Operatoren oder Klammern enthält; dann gilt die bisherige Suche. */
+const BOOL_OPS = { und: 'AND', and: 'AND', oder: 'OR', or: 'OR', nicht: 'NOT', not: 'NOT' };
+function parseBool(q, isEmptyAtom) {
+  q = String(q || '');
+  const toks = [];
+  let i = 0;
+  while (i < q.length) {
+    const c = q[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '(') { toks.push({ t: '(' }); i++; continue; }
+    if (c === ')') { toks.push({ t: ')' }); i++; continue; }
+    if (c === '-' && q[i + 1] === '(') { toks.push({ t: 'NOT' }, { t: '(' }); i += 2; continue; }
+    let j = i;
+    if (q[j] === '-') j++;
+    const fm = /^[\p{L}]+:/u.exec(q.slice(j));
+    if (fm) j += fm[0].length;
+    while (j < q.length && !/[\s()]/.test(q[j])) {
+      if (q[j] === '"') { const k = q.indexOf('"', j + 1); j = k < 0 ? q.length : k + 1; } else j++;
+    }
+    if (j === i) j = i + 1;
+    const raw = q.slice(i, j);
+    i = j;
+    const op = BOOL_OPS[raw.toLowerCase()];
+    if (op) toks.push({ t: op });
+    else if (!isEmptyAtom(raw)) toks.push({ t: 'ATOM', raw });
+  }
+  if (!toks.some((t) => t.t !== 'ATOM') || !toks.some((t) => t.t === 'ATOM')) return null;
+  let p = 0;
+  const peek = () => toks[p];
+  const join = (op, a, b) => (a && b ? { op, a, b } : a || b);
+  function parseOr() {
+    let l = parseAnd();
+    while (peek() && peek().t === 'OR') { p++; l = join('OR', l, parseAnd()); }
+    return l;
+  }
+  function parseAnd() {
+    let l = parseNot();
+    while (peek() && ['AND', 'NOT', '(', 'ATOM'].includes(peek().t)) {
+      if (peek().t === 'AND') p++;
+      const r = parseNot();
+      l = join('AND', l, r);
+      if (!r && !peek()) break;
+    }
+    return l;
+  }
+  function parseNot() {
+    const t = peek();
+    if (!t) return null;
+    if (t.t === 'NOT') { p++; const x = parseNot(); return x ? { op: 'NOT', a: x } : null; }
+    if (t.t === '(') { p++; const e = parseOr(); if (peek() && peek().t === ')') p++; return e; }
+    if (t.t === 'ATOM') { p++; return { atom: t.raw }; }
+    return null;
+  }
+  let tree = null;
+  while (p < toks.length) {
+    const start = p;
+    tree = join('AND', tree, parseOr());
+    if (p < toks.length && p === start) p++; // überzählige „)“ oder Operator ohne Gegenstück überspringen
+    else if (p < toks.length && peek().t === ')') p++;
+  }
+  return tree;
+}
+/** wertet den Baum aus; all = erlaubte Notiz-IDs, atom(raw, negiert) = Menge der Treffer eines Suchbegriffs */
+function evalBool(node, all, atom, neg = false) {
+  if (!node) return new Set(all);
+  if (node.atom !== undefined) return atom(node.atom, neg);
+  if (node.op === 'NOT') { const x = evalBool(node.a, all, atom, !neg); const out = new Set(); for (const id of all) if (!x.has(id)) out.add(id); return out; }
+  const a = evalBool(node.a, all, atom, neg);
+  const b = evalBool(node.b, all, atom, neg);
+  if (node.op === 'OR') { for (const id of b) a.add(id); return a; }
+  const out = new Set();
+  for (const id of a) if (b.has(id)) out.add(id);
+  return out;
+}
+const isEmptyAtom = (raw) => { const x = parseQuery(raw); return !x.terms.length && !x.phrases.length && !x.neg.length && !x.negPhrases.length && !x.fields.length; };
+
 const Search = {
   ms: null,
   indexed: new Set(),
@@ -2682,7 +2759,8 @@ const Search = {
     if (this.ms.dirtCount > 2000) this.ms.vacuum();
   },
   query({ view = { type: 'all' }, q = '', sort = 'updated-desc' } = {}) {
-    const pq = parseQuery(q);
+    const bool = parseBool(q, isEmptyAtom);
+    const pq = bool ? parseQuery('') : parseQuery(q);
     const tagByName = (n) => S.tags.filter((t) => fold(t.name) === fold(n) || (n.endsWith('*') && fold(t.name).startsWith(fold(n.slice(0, -1)))));
     const tagWithChildren = (id) => {
       const out = new Set([id]);
@@ -2699,7 +2777,7 @@ const Search = {
       if (view.type === 'tag') { const s = tagWithChildren(view.id); list = list.filter((n) => n.tagIds.some((t) => s.has(t))); }
       if (view.type === 'shortcuts') { const s = new Set((S.settings.shortcuts || []).filter((x) => x.type === 'note').map((x) => x.id)); list = list.filter((n) => s.has(n.id)); }
     }
-    for (const { field, value, neg } of pq.fields) {
+    const fieldPred = (field, value) => {
       let pred = null;
       const v = fold(value);
       if (field === 'notebook') pred = (n) => fold(S.notebooks.find((b) => b.id === n.notebookId)?.name || '').startsWith(v);
@@ -2720,10 +2798,56 @@ const Search = {
       if (field === 'sourceurl') pred = (n) => fold(n.sourceUrl || '').includes(v);
       if (field === 'from') pred = (n) => fold(n.mail?.from || n.author || '').includes(v);
       if (field === 'intitle') pred = (n) => tokenize(value).every((w) => fold(n.title).includes(fold(w)));
+      return pred;
+    };
+    for (const { field, value, neg } of pq.fields) {
+      const pred = fieldPred(field, value);
       if (pred) list = list.filter(neg ? (n) => !pred(n) : pred);
     }
-    let scores = null, hlTerms = [], fuzzyUsed = false;
-    if ((pq.terms.length || pq.phrases.length) && this.ms) {
+    let scores = null, hlTerms = [], fuzzyUsed = false, outPhrases = pq.phrases;
+    if (bool && this.ms) {
+      // boolesche Suche: jeden Suchbegriff einzeln auswerten und die Treffermengen verknüpfen
+      const byId = new Map(list.map((n) => [n.id, n]));
+      const all = new Set(byId.keys());
+      const sc = new Map(), termSet = new Set(), phr = [];
+      const atom = (raw, negated) => {
+        const a = parseQuery(raw);
+        let items = list;
+        for (const { field, value, neg } of a.fields) { const pred = fieldPred(field, value); if (pred) items = items.filter(neg ? (n) => !pred(n) : pred); }
+        let ids = new Set(items.map((n) => n.id));
+        if (a.terms.length || a.phrases.length) {
+          const words = [...a.terms, ...a.phrases.flatMap((x) => tokenize(x))];
+          const res = this.ms.search(words.join(' '), { filter: (r) => ids.has(r.id), combineWith: a.any ? 'OR' : 'AND', prefix: !negated });
+          let hit = new Set(res.map((r) => r.id));
+          if (a.phrases.length) {
+            hit = new Set([...hit].filter((id) => {
+              const n = byId.get(id);
+              const hay = fold([n.title, n.text, n.attText].join('\n')).replace(/\s+/g, ' ');
+              const ok = a.phrases.map((x) => hay.includes(fold(x).replace(/\s+/g, ' ')));
+              return a.any ? ok.some(Boolean) : ok.every(Boolean);
+            }));
+          }
+          if (!negated) {
+            for (const r of res) if (hit.has(r.id)) sc.set(r.id, (sc.get(r.id) || 0) + r.score);
+            res.slice(0, 300).forEach((r) => r.terms.forEach((t) => termSet.add(t)));
+            words.forEach((w) => termSet.add(fold(w)));
+            phr.push(...a.phrases);
+          }
+          ids = hit;
+        }
+        if (a.neg.length || a.negPhrases.length) {
+          for (const w of a.neg) this.ms.search(w, { prefix: false, fuzzy: false }).forEach((r) => ids.delete(r.id));
+          if (a.negPhrases.length) for (const id of [...ids]) { const n = byId.get(id); const h = fold(n.title + '\n' + n.text); if (a.negPhrases.some((x) => h.includes(fold(x)))) ids.delete(id); }
+        }
+        return ids;
+      };
+      const hits = evalBool(bool, all, atom);
+      list = list.filter((n) => hits.has(n.id));
+      if (sc.size) scores = sc;
+      hlTerms = [...termSet];
+      outPhrases = phr;
+    } else if ((pq.terms.length || pq.phrases.length) && this.ms) {
+
       const allowed = new Set(list.map((n) => n.id));
       const words = [...pq.terms, ...pq.phrases.flatMap((p) => tokenize(p))];
       let res = this.ms.search(words.join(' '), { filter: (r) => allowed.has(r.id), combineWith: pq.any ? 'OR' : 'AND' });
@@ -2762,7 +2886,7 @@ const Search = {
     };
     const s = sort === 'relevance' && !scores ? 'updated-desc' : sort;
     list.sort(cmp[s] || cmp['updated-desc']);
-    return { list, terms: hlTerms, phrases: pq.phrases, fuzzy: fuzzyUsed, hasText: !!scores };
+    return { list, terms: hlTerms, phrases: outPhrases, fuzzy: fuzzyUsed, hasText: !!scores || (!!bool && hlTerms.length > 0) };
   },
   summary(n, terms, phrases) {
     let snippet = null, inAttachment = false;
@@ -3432,6 +3556,10 @@ function showHelp() {
     ['"genaue Wortfolge"', 'Wortgruppe genau so'],
     ['-wort', 'Notizen ohne dieses Wort'],
     ['any: wort1 wort2', 'mindestens eines der Wörter'],
+    ['wort1 UND wort2', 'beide Wörter (wie wort1 wort2)'],
+    ['wort1 ODER wort2', 'mindestens eines der beiden'],
+    ['NICHT wort', 'ohne dieses Wort (wie -wort)'],
+    ['Rechnung (Telekom ODER Vodafone)', 'Klammern legen fest, was zusammengehört; auch mit Wortgruppen und Feldern, z. B. NICHT tag:erledigt'],
     ['notizbuch:Name', 'nur in Notizbüchern, deren Name so beginnt'],
     ['stapel:Name', 'nur in diesem Stapel'],
     ['tag:Name', 'mit diesem Schlagwort (auch Unter-Schlagwörter); tag:Ver* für Anfänge'],
@@ -3442,7 +3570,7 @@ function showHelp() {
     ['quelle:web · quelle:mail · quelle:evernote', 'Herkunft der Notiz'],
     ['url:spiegel.de · von:Absender', 'Quelladresse bzw. Absender/Autor'],
   ];
-  dialog(`<h2>Suche</h2><p>Groß-/Kleinschreibung und Umlaute spielen keine Rolle („Muller“ findet „Müller“). Die Suche umfasst Titel, Text, Schlagwörter, Web-Clips und den Text von PDF- und Word-Anhängen. Gesucht wird in der links gewählten Ansicht.</p><table>${rows.map((r) => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join('')}</table><div class="row"><button class="btn" data-close>Schließen</button></div>`);
+  dialog(`<h2>Suche</h2><p>Groß-/Kleinschreibung und Umlaute spielen keine Rolle („Muller“ findet „Müller“). Die Suche umfasst Titel, Text, Schlagwörter, Web-Clips und den Text von PDF- und Word-Anhängen. Gesucht wird in der links gewählten Ansicht.</p><p>UND, ODER, NICHT (auch AND, OR, NOT) werden in Groß- und Kleinschreibung als Verknüpfung verstanden; ohne Angabe gilt UND. UND bindet stärker als ODER: „Reise ODER Rechnung NICHT Telekom“ bedeutet „Reise ODER (Rechnung NICHT Telekom)“ – im Zweifel Klammern setzen. Soll eines dieser Wörter selbst gesucht werden, in Anführungszeichen setzen, z. B. „"oder"“.</p><table>${rows.map((r) => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join('')}</table><div class="row"><button class="btn" data-close>Schließen</button></div>`);
 }
 function showSettings() {
   const acct = store.get('email', '');
