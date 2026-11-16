@@ -238,6 +238,29 @@ body.scanning{overflow:hidden}
 .sc-spin{width:42px;height:42px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:scspin .9s linear infinite}
 .sc-spin.small{width:28px;height:28px;border-color:#ddd;border-top-color:var(--accent);margin:40px}
 @keyframes scspin{to{transform:rotate(360deg)}}
+
+/* Bearbeiten (1.2.0) */
+.fab.fab2{bottom:calc(84px + env(safe-area-inset-bottom));width:46px;height:46px;right:21px;font-size:20px;background:#fff;color:var(--accent);border:1px solid var(--line)}
+#editbtn{font-size:14px;white-space:nowrap}
+body.editing{overflow:hidden}
+.editor{position:fixed;inset:0;z-index:90;background:#fff;display:flex;flex-direction:column;color:var(--t)}
+.ed-top{display:flex;align-items:center;gap:10px;padding:calc(8px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left));border-bottom:1px solid var(--line)}
+.ed-status{flex:1;text-align:center;font-size:13px;color:var(--m)}
+.ed-meta{padding:8px max(14px,env(safe-area-inset-right)) 4px max(14px,env(safe-area-inset-left));display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.ed-meta #edtitle{flex:2 1 260px;font-size:20px;font-weight:700;border:0;border-bottom:1px solid transparent;padding:6px 2px;background:transparent;min-width:0}
+.ed-meta #edtitle:focus{outline:none;border-bottom-color:var(--accent)}
+.ed-nbwrap{flex:1 1 220px;display:flex;align-items:center;gap:8px;min-width:0}
+.ed-nblbl{font-size:12px;color:var(--m)}
+.ed-nbwrap input{flex:1;min-width:0;padding:7px 10px;border:1px solid #cfd4d9;border-radius:8px;font-size:16px;background:#fff}
+.ed-tb{display:flex;gap:4px;align-items:center;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:6px max(10px,env(safe-area-inset-right)) 6px max(10px,env(safe-area-inset-left));border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:#f8f9fa;scrollbar-width:none}
+.ed-tb::-webkit-scrollbar{display:none}
+.ed-tb button{flex:none;min-width:40px;height:38px;border:1px solid #d9dde1;border-radius:8px;background:#fff;font-size:15px;padding:0 9px;color:var(--t)}
+.ed-tb button:active{background:var(--accent-l)}
+.ed-tb button.danger{color:#c2382b}
+.ed-tb .sep{flex:none;width:1px;height:24px;background:#d9dde1;margin:0 3px}
+.ed-frame{flex:1;min-height:0;display:flex}
+.ed-frame iframe{flex:1;width:100%;border:0;background:#fff}
+.editor .sc-busy{position:fixed}
 </style>
 </head>
 <body>
@@ -246,7 +269,7 @@ body.scanning{overflow:hidden}
 <div id="login" class="hidden">
   <div class="login-box">
     <h1><span class="logo">✎</span>Notizen</h1>
-    <p class="sub">Ihre Notizen-Ablage in pCloud lesen, durchsuchen und unterwegs ergänzen.</p>
+    <p class="sub">Ihre Notizen-Ablage in pCloud lesen, durchsuchen, bearbeiten und unterwegs ergänzen.</p>
     <form id="loginform" autocomplete="on">
       <div id="pwbox">
         <label for="email">pCloud-E-Mail-Adresse</label>
@@ -300,11 +323,12 @@ body.scanning{overflow:hidden}
         </select></div>
     </div>
     <div class="notes" id="notes"></div>
+    <button class="fab fab2" id="newfab" title="Neue Notiz" aria-label="Neue Notiz"><span>✎</span></button>
     <button class="fab" id="scanfab" title="Foto oder Dokument erfassen" aria-label="Erfassen"><span>📷</span></button>
     <div class="resizer" id="resizer" title="Breite der Notizliste ändern (Doppelklick: Standardbreite)"></div>
   </section>
   <main id="view">
-    <div class="view-top"><button class="icon-btn only-mobile" id="backbtn" title="Zurück zur Liste">‹ Liste</button><span class="crumb" id="crumb"></span><button class="icon-btn wide-btn" id="widebtn" title="Notiz über die ganze Breite anzeigen">⤢ Breit</button></div>
+    <div class="view-top"><button class="icon-btn only-mobile" id="backbtn" title="Zurück zur Liste">‹ Liste</button><span class="crumb" id="crumb"></span><button class="icon-btn" id="editbtn" title="Notiz bearbeiten">✎ Bearbeiten</button><button class="icon-btn wide-btn" id="widebtn" title="Notiz über die ganze Breite anzeigen">⤢ Breit</button></div>
     <div class="view-scroll">
       <div id="noview" class="no-note">Wählen Sie links eine Notiz aus.</div>
       <div id="notehost" class="hidden"></div>
@@ -2329,7 +2353,7 @@ body.scanning{overflow:hidden}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.1.1';
+const VERSION = '1.2.0';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -3290,6 +3314,7 @@ async function openNote(id, opt = {}) {
   if (!rec) { toast('Diese Notiz ist nicht (mehr) vorhanden.'); return; }
   const seq = ++openSeq;
   S.current = id;
+  S.currentDoc = null;
   $$('.note-item.active').forEach((e) => e.classList.remove('active'));
   $(`.note-item[data-id="${id}"]`)?.classList.add('active');
   if (isMobile()) {
@@ -3347,6 +3372,7 @@ async function openNote(id, opt = {}) {
       return u;
     };
     const html = z['content.html'] ? u8text(z['content.html']) : '';
+    S.currentDoc = { id, html, urlFor };
     renderBody($('#notehost .body-host'), html, { rec, files, big, urlFor, resByName: byName, terms: S.q.trim() ? r.terms : [], phrases: S.q.trim() ? r.phrases : [] });
     if (opt.keepScroll) scroller.scrollTop = keepTop;
   } catch (e) {
@@ -3671,7 +3697,7 @@ function showSettings() {
     <input type="text" id="rootpath" value="${esc(S.root)}">
     <p style="font-size:13px;color:#6b7280;margin:6px 0 0">${Cache.enabled ? 'Die Notiztexte werden auf diesem Gerät zwischengespeichert; beim Öffnen wird nur Geändertes nachgeladen.' : 'Auf diesem Gerät wird nichts dauerhaft gespeichert; beim nächsten Öffnen werden die Notizen neu geladen.'}</p>
     <div class="row"><button class="btn light" id="clearcache">Zwischenspeicher leeren</button><button class="btn light" id="logoutbtn">Abmelden</button><button class="btn" id="saveset">Übernehmen</button></div>
-    <p style="font-size:12px;color:#9aa1a9;margin:14px 0 0">Notizen Web ${VERSION} · Lesen, Suchen, Erfassen (Foto und Dokumentenscanner)</p>`, (ov) => {
+    <p style="font-size:12px;color:#9aa1a9;margin:14px 0 0">Notizen Web ${VERSION} · Lesen, Suchen, Bearbeiten, Erfassen (Foto und Dokumentenscanner)</p>`, (ov) => {
     $('#saveset', ov).onclick = async () => {
       const v = $('#rootpath', ov).value.trim() || '/Notizen-Ablage';
       ov.remove();
@@ -3811,6 +3837,8 @@ function bind() {
   $('#setbtn').addEventListener('click', showSettings);
   $('#helpbtn').addEventListener('click', showHelp);
   $('#scanfab').addEventListener('click', () => Scanner.open());
+  $('#newfab').addEventListener('click', () => Editor.openNew());
+  $('#editbtn').addEventListener('click', () => Editor.open());
   // Suche
   let qt = null;
   $('#q').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value; runQuery(); }, 220); });
@@ -4616,10 +4644,11 @@ const Scanner = (() => {
     parts.push('<p></p>');
     return parts.join('');
   }
+  const newId = () => (crypto.randomUUID ? crypto.randomUUID() : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)));
   /** Reihenfolge: Ordner, Anhänge, content.html, zuletzt note.json – erst dann gilt die Notiz als vollständig */
   async function createNote({ title, notebookId, text, files, source }, progress) {
     const nf0 = await notesFolder();
-    if (!st.noteId) st.noteId = (crypto.randomUUID ? crypto.randomUUID() : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)));
+    if (!st.noteId) st.noteId = newId();
     const id = st.noteId;
     progress('Wird gespeichert …');
     const nf = await mkdir(nf0, id);
@@ -4819,7 +4848,471 @@ const Scanner = (() => {
     addEventListener('resize', () => { if (ed.page) drawEditor(); drawOverlay(st.lastQuad); });
   }
 
-  return { open, close, loadCV, _st: st, _makePdf: makePdf, _noteHtml: noteHtml };
+  return { open, close, loadCV, upload, mkdir, notesFolder, newId, _st: st, _makePdf: makePdf, _noteHtml: noteHtml };
+})();
+
+// ---------------------------------------------------------------- Bearbeiten und neue Notizen (Stufe 2)
+// Grundsatz: Das vorhandene HTML der Notiz bleibt unverändert, nur was bearbeitet wird, ändert sich.
+// Der Editor läuft in einem abgeschotteten Rahmen (iframe ohne Skripte), damit Inhalte aus Web-Clips
+// und Evernote weder Skripte ausführen noch die Oberfläche verstellen.
+// Benötigt aus app.js: $, $$, esc, fold, store, toast, API, S, sync, openNote, fileFromSrc, unzip, u8text, fsig,
+//   NOTE_CSS, ApiError, isMobile; aus scan.js: Scanner (upload, mkdir, notesFolder, newId)
+const Editor = (() => {
+  const ED_CSS = `
+    html{-webkit-text-size-adjust:100%}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;padding:14px 16px 40vh;min-height:60vh;outline:none;-webkit-user-select:text;user-select:text}
+    body:empty::before{content:"Hier schreiben …";color:#9aa1a9}
+    [data-attachment],[data-webclip]{display:block;border:1px solid #d5d9de;border-radius:8px;background:#f6f7f8;padding:10px 12px;margin:.5em 0;color:#4b5563;font-size:14px;-webkit-user-select:none;user-select:none}
+    [data-attachment]::before{content:"📎 " attr(data-name)}
+    [data-webclip]::before{content:"🌐 Web-Clip " attr(data-url) " – nur in der PC-App bearbeitbar"}
+    .fold-arrow,.fold-more{display:none!important}
+    ul[data-type="taskList"] li>label{-webkit-user-select:none;user-select:none}
+    ul[data-type="taskList"] li>label input{width:20px;height:20px}
+    img{max-width:100%;height:auto}`;
+
+  const st = { el: null, frame: null, doc: null, id: null, isNew: false, base: null, initial: '', title0: '', nb0: '', saving: false, range: null };
+
+  // ------------------------------------------------------------ Oberfläche
+  function html() {
+    return `
+<div class="ed-top">
+  <button class="btn light" id="edcancel">Abbrechen</button>
+  <span class="ed-status" id="edstatus"></span>
+  <button class="btn" id="edsave">Fertig</button>
+</div>
+<div class="ed-meta">
+  <input type="text" id="edtitle" placeholder="Titel" autocomplete="off">
+  <div class="sc-nb ed-nbwrap"><span class="ed-nblbl">Notizbuch</span><input type="search" id="ednb" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Notizbuch suchen"><div class="sc-nblist hidden" id="ednblist"></div></div>
+</div>
+<div class="ed-tb" id="edtb">
+  <button data-cmd="bold" title="Fett"><b>B</b></button>
+  <button data-cmd="italic" title="Kursiv"><i>I</i></button>
+  <button data-cmd="underline" title="Unterstrichen"><u>U</u></button>
+  <button data-cmd="strikeThrough" title="Durchgestrichen"><s>S</s></button>
+  <span class="sep"></span>
+  <button data-block="h1" title="Überschrift 1">H1</button>
+  <button data-block="h2" title="Überschrift 2">H2</button>
+  <button data-block="h3" title="Überschrift 3">H3</button>
+  <button data-block="p" title="Normaler Text">¶</button>
+  <span class="sep"></span>
+  <button data-cmd="insertUnorderedList" title="Aufzählung">•≡</button>
+  <button data-cmd="insertOrderedList" title="Nummerierung">1≡</button>
+  <button data-act="task" title="Checkliste">☑</button>
+  <span class="sep"></span>
+  <button data-act="outdent" title="Einzug verkleinern">⇤</button>
+  <button data-act="indent" title="Einzug vergrößern">⇥</button>
+  <span class="sep"></span>
+  <button data-cmd="undo" title="Rückgängig">↶</button>
+  <button data-cmd="redo" title="Wiederholen">↷</button>
+  <span class="sep"></span>
+  <button data-act="trash" title="In den Papierkorb" class="danger">🗑</button>
+</div>
+<div class="ed-frame"><iframe id="edframe" sandbox="allow-same-origin" title="Notiztext"></iframe></div>
+<div class="sc-busy hidden" id="edbusy"><div class="sc-spin"></div><span id="edbusytext">Bitte warten …</span></div>`;
+  }
+  const q = (s) => st.el.querySelector(s);
+  function busy(t) { const b = q('#edbusy'); b.classList.toggle('hidden', !t); if (t) q('#edbusytext').textContent = t; }
+
+  /** Vorhandene Notiz bearbeiten (Inhalt muss geladen sein: S.currentDoc) */
+  function open() {
+    const d = S.currentDoc;
+    if (!d || d.id !== S.current) { toast('Bitte warten, bis die Notiz geladen ist.'); return; }
+    const rec = S.notes.get(d.id), L = S.listing.get(d.id);
+    if (!rec || !L) { toast('Diese Notiz ist nicht (mehr) vorhanden.'); return; }
+    if (rec.trashed) { toast('Notizen im Papierkorb können nicht bearbeitet werden.'); return; }
+    build({ id: d.id, isNew: false, title: rec.title || '', notebookId: rec.notebookId, html: d.html, urlFor: d.urlFor,
+      base: { content: fsig(L.files['content.html']), note: fsig(L.files['note.json']), folderid: L.folderid } });
+  }
+  /** Neue Textnotiz */
+  function openNew() {
+    if (!API.auth) { toast('Bitte zuerst anmelden.'); return; }
+    const v = S.view || {};
+    let nb = v.type === 'notebook' ? v.id : v.type === 'stack' ? (S.notebooks.find((n) => n.stack === v.id) || {}).id : null;
+    nb = nb || store.get('scanNotebook', '') || S.settings?.defaultNotebookId || (S.notebooks[0] || {}).id || '';
+    build({ id: null, isNew: true, title: '', notebookId: nb, html: '<p><br></p>', urlFor: () => null, base: null });
+  }
+
+  function build(o) {
+    if (st.el) return;
+    st.id = o.id; st.isNew = o.isNew; st.base = o.base; st.saving = false; st.range = null; st.newId = null;
+    const el = document.createElement('div');
+    el.id = 'editor'; el.className = 'editor';
+    el.innerHTML = html();
+    document.body.append(el);
+    document.body.classList.add('editing');
+    st.el = el;
+    q('#edtitle').value = o.title;
+    st.title0 = o.title; st.nb0 = o.notebookId;
+    setNotebook(o.notebookId);
+    bindUi();
+    const fr = q('#edframe');
+    st.frame = fr;
+    fr.addEventListener('load', () => prepare(o), { once: true });
+    fr.srcdoc = `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${NOTE_CSS}\n${ED_CSS}</style></head><body class="pm" contenteditable="true" spellcheck="true">${o.html || ''}</body></html>`;
+    history.pushState({ edit: true }, '');
+  }
+  addEventListener('popstate', () => { if (st.el && !st.saving) close(false, true); });
+
+  function prepare(o) {
+    const doc = st.frame.contentDocument;
+    st.doc = doc;
+    const body = doc.body;
+    try { doc.execCommand('defaultParagraphSeparator', false, 'p'); } catch {}
+    // Bilder aus der Notiz anzeigen (Adresse merken und beim Speichern zurücksetzen)
+    for (const img of body.querySelectorAll('img[src^="notiz://"]')) {
+      const s = img.getAttribute('src');
+      img.setAttribute('data-nw-src', s);
+      const u = o.urlFor(fileFromSrc(s));
+      img.setAttribute('src', u || 'data:,'); // Attribut an seiner Stelle lassen (Reihenfolge bleibt erhalten)
+    }
+    for (const e of body.querySelectorAll('[style=""]')) e.setAttribute('data-nw-es', '1');
+    // nicht bearbeitbare Bausteine
+    for (const e of body.querySelectorAll('[data-attachment],[data-webclip],ul[data-type="taskList"] li>label,.fold-arrow,.fold-more')) lockEl(e);
+    st.initial = serialize();
+    // Checklisten abhaken
+    doc.addEventListener('click', (e) => {
+      const cb = e.target.closest && e.target.closest('ul[data-type="taskList"] li>label');
+      if (!cb) return;
+      e.preventDefault();
+      const li = cb.parentElement, on = li.getAttribute('data-checked') !== 'true';
+      li.setAttribute('data-checked', on ? 'true' : 'false');
+      const inp = cb.querySelector('input');
+      if (inp) { if (on) inp.setAttribute('checked', 'checked'); else inp.removeAttribute('checked'); inp.checked = on; }
+    }, true);
+    // Enter/Rücktaste in Checklisten
+    body.addEventListener('beforeinput', onBeforeInput);
+    body.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && taskItemAt()) { e.preventDefault(); taskEnter(); }
+    });
+    doc.addEventListener('selectionchange', () => { const s = doc.getSelection(); if (s && s.rangeCount && body.contains(s.anchorNode)) st.range = s.getRangeAt(0).cloneRange(); });
+    if (o.isNew) { const p0 = body.querySelector('p'); if (p0) caretInto(p0, false); setTimeout(() => q('#edtitle').focus(), 50); }
+  }
+  function lockEl(e) { e.setAttribute('contenteditable', 'false'); e.setAttribute('data-nw-ce', '1'); }
+
+  /** Aktuellen Inhalt als HTML (wie gespeichert) */
+  function serialize() {
+    const c = st.doc.body.cloneNode(true);
+    for (const img of c.querySelectorAll('img[data-nw-src]')) { img.setAttribute('src', img.getAttribute('data-nw-src')); img.removeAttribute('data-nw-src'); }
+    for (const e of c.querySelectorAll('[data-nw-ce]')) { e.removeAttribute('contenteditable'); e.removeAttribute('data-nw-ce'); }
+    // leere style-Attribute, die der Browser beim Bearbeiten erzeugt, entfernen (vorhandene bleiben)
+    for (const e of c.querySelectorAll('[style=""]:not([data-nw-es])')) e.removeAttribute('style');
+    for (const e of c.querySelectorAll('[data-nw-es]')) e.removeAttribute('data-nw-es');
+    return c.innerHTML;
+  }
+  const changed = () => !!st.doc && (serialize() !== st.initial || q('#edtitle').value.trim() !== st.title0.trim() || q('#ednb').dataset.id !== st.nb0);
+
+  function close(force, fromPop) {
+    if (!st.el) return;
+    if (!force && changed() && !confirm('Änderungen verwerfen?')) { if (fromPop) history.pushState({ edit: true }, ''); return; }
+    st.el.remove(); st.el = null; st.doc = null; st.frame = null;
+    document.body.classList.remove('editing');
+    if (!fromPop && history.state?.edit) history.back();
+  }
+
+  // ------------------------------------------------------------ Symbolleiste
+  function bindUi() {
+    q('#edcancel').onclick = () => close(false);
+    q('#edsave').onclick = () => save();
+    const tb = q('#edtb');
+    // Fokus im Text behalten (sonst geht auf dem iPhone die Auswahl verloren)
+    for (const ev of ['pointerdown', 'mousedown']) tb.addEventListener(ev, (e) => { if (e.target.closest('button')) e.preventDefault(); });
+    tb.addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b || !st.doc) return;
+      if (b.dataset.act === 'trash') { trash(); return; }
+      restoreSel();
+      if (b.dataset.cmd) st.doc.execCommand(b.dataset.cmd, false, null);
+      else if (b.dataset.block) st.doc.execCommand('formatBlock', false, '<' + b.dataset.block + '>');
+      else if (b.dataset.act === 'task') toggleTask();
+      else if (b.dataset.act === 'indent') indent(1);
+      else if (b.dataset.act === 'outdent') indent(-1);
+    });
+    bindNotebookPicker();
+  }
+  function restoreSel() {
+    const doc = st.doc;
+    st.frame.contentWindow.focus();
+    doc.body.focus();
+    const s = doc.getSelection();
+    if (st.range && (!s.rangeCount || !doc.body.contains(s.anchorNode))) { s.removeAllRanges(); s.addRange(st.range); }
+    if (!s.rangeCount) { const r = doc.createRange(); r.selectNodeContents(doc.body); r.collapse(false); s.addRange(r); }
+  }
+  function selNode() { const s = st.doc.getSelection(); if (!s || !s.rangeCount) return null; let n = s.getRangeAt(0).startContainer; return n.nodeType === 1 ? n : n.parentElement; }
+  const BLOCKS = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,pre';
+  /** Block, in dem die Einfügemarke steht (Absatz, Überschrift, Listenpunkt; sonst direktes Kind von body) */
+  function blockAt() {
+    let n = selNode();
+    if (!n) return null;
+    const b = n.closest(BLOCKS);
+    if (b && st.doc.body.contains(b)) return b;
+    while (n && n.parentElement && n.parentElement !== st.doc.body) n = n.parentElement;
+    return n && n !== st.doc.body ? n : null;
+  }
+  const taskItemAt = () => { const n = selNode(); return n && n.closest('li[data-type="taskItem"]'); };
+
+  function newTaskItem(contentNodes) {
+    const d = st.doc, li = d.createElement('li');
+    li.setAttribute('data-checked', 'false'); li.setAttribute('data-type', 'taskItem');
+    const lab = d.createElement('label'); lab.append(d.createElement('input'), d.createElement('span'));
+    lab.firstChild.setAttribute('type', 'checkbox');
+    lockEl(lab);
+    const div = d.createElement('div');
+    const p = d.createElement('p');
+    if (contentNodes && contentNodes.length) p.append(...contentNodes); else p.append(d.createElement('br'));
+    div.append(p);
+    li.append(lab, div);
+    return li;
+  }
+  function caretInto(el, atEnd) {
+    const s = st.doc.getSelection(), r = st.doc.createRange();
+    r.selectNodeContents(el); r.collapse(!atEnd);
+    s.removeAllRanges(); s.addRange(r);
+  }
+  /** Checkliste ein/aus */
+  function toggleTask() {
+    const d = st.doc, ti = taskItemAt();
+    if (ti) { // Checkliste -> normale Absätze
+      const ul = ti.closest('ul[data-type="taskList"]');
+      const frag = d.createDocumentFragment();
+      let first = null;
+      for (const li of [...ul.children]) {
+        const div = li.querySelector(':scope>div');
+        const nodes = div ? [...div.childNodes] : [];
+        if (!nodes.length) { const p = d.createElement('p'); p.append(d.createElement('br')); nodes.push(p); }
+        for (const n of nodes) { if (n.nodeType === 3) { const p = d.createElement('p'); p.append(n); frag.append(p); } else frag.append(n); }
+        if (li === ti) first = frag.lastChild;
+      }
+      ul.replaceWith(frag);
+      if (first) caretInto(first, true);
+      return;
+    }
+    const b = blockAt();
+    const li = b && b.closest('li');
+    if (li && li.parentElement && /^(UL|OL)$/.test(li.parentElement.tagName)) { // Liste -> Checkliste
+      const list = li.parentElement, ul = d.createElement('ul');
+      ul.setAttribute('data-type', 'taskList');
+      let target = null;
+      for (const x of [...list.children]) {
+        const nodes = [...x.childNodes].filter((n) => !(n.nodeType === 1 && /^(UL|OL)$/.test(n.tagName)));
+        const t = newTaskItem([]);
+        const p = t.querySelector('p'); p.innerHTML = '';
+        const blockKids = nodes.some((n) => n.nodeType === 1 && n.matches(BLOCKS + ',div'));
+        if (blockKids) { t.querySelector(':scope>div').replaceChildren(...nodes); } else if (nodes.length) p.append(...nodes); else p.append(d.createElement('br'));
+        ul.append(t);
+        if (x === li) target = t;
+      }
+      list.replaceWith(ul);
+      if (target) caretInto(target.querySelector(':scope>div'), true);
+      return;
+    }
+    // Absatz/Überschrift -> Checkliste mit einem Punkt
+    const ul = d.createElement('ul');
+    ul.setAttribute('data-type', 'taskList');
+    let t;
+    if (b && b !== d.body) { t = newTaskItem([...b.childNodes]); b.replaceWith(ul); }
+    else { t = newTaskItem([]); d.body.append(ul); }
+    ul.append(t);
+    caretInto(t.querySelector('p'), true);
+  }
+  /** Enter in einem Checklistenpunkt: neuer Punkt; im leeren Punkt: Checkliste verlassen */
+  function taskEnter() {
+    const d = st.doc, li = taskItemAt();
+    if (!li) return;
+    const div = li.querySelector(':scope>div') || li;
+    const ul = li.parentElement;
+    if (!div.textContent.trim() && !div.querySelector('img')) {
+      // leerer Unterpunkt: eine Ebene nach links (wie in der PC-App); leerer Hauptpunkt: Checkliste verlassen
+      if (ul.parentElement && ul.parentElement.closest('li[data-type="taskItem"]')) { indent(-1); return; }
+      const p = d.createElement('p'); p.append(d.createElement('br'));
+      const after = [...ul.children].slice([...ul.children].indexOf(li) + 1);
+      li.remove();
+      if (after.length) { const ul2 = ul.cloneNode(false); ul2.append(...after); ul.after(ul2); }
+      ul.after(p);
+      if (!ul.children.length) ul.remove();
+      caretInto(p, false);
+      return;
+    }
+    const s = d.getSelection(), r = s.getRangeAt(0);
+    r.deleteContents();
+    const tail = d.createRange();
+    tail.setStart(r.startContainer, r.startOffset);
+    tail.setEndAfter(div.lastChild || div);
+    const frag = tail.extractContents();
+    const t = newTaskItem([]);
+    const tdiv = t.querySelector(':scope>div');
+    // Rest des Textes in den neuen Punkt
+    const p0 = frag.firstChild && frag.firstChild.nodeType === 1 && frag.firstChild.tagName === 'P' ? null : true;
+    if (frag.textContent.trim() || frag.querySelector && frag.querySelector('img')) { tdiv.replaceChildren(); if (p0) { const p = d.createElement('p'); p.append(frag); tdiv.append(p); } else tdiv.append(frag); }
+    for (const p of div.querySelectorAll('p')) if (!p.textContent && !p.querySelector('br,img')) p.append(d.createElement('br'));
+    if (!div.textContent && !div.querySelector('p')) { const p = d.createElement('p'); p.append(d.createElement('br')); div.append(p); }
+    li.after(t);
+    caretInto(tdiv.querySelector('p') || tdiv, false);
+  }
+  function onBeforeInput(e) {
+    if (e.inputType === 'insertParagraph' && taskItemAt()) { e.preventDefault(); taskEnter(); return; }
+    if (e.inputType === 'deleteContentBackward') {
+      const li = taskItemAt();
+      if (!li) return;
+      const s = st.doc.getSelection();
+      if (!s.isCollapsed) return;
+      const div = li.querySelector(':scope>div');
+      if (!div || div.textContent.length) return;
+      // leerer Punkt: entfernen, Marke ans Ende des vorigen Punkts bzw. Absatz davor
+      e.preventDefault();
+      const prev = li.previousElementSibling, ul = li.parentElement;
+      li.remove();
+      if (prev) caretInto(prev.querySelector(':scope>div') || prev, true);
+      else { const p = st.doc.createElement('p'); p.append(st.doc.createElement('br')); ul.before(p); caretInto(p, false); }
+      if (!ul.children.length) ul.remove();
+    }
+  }
+  /** Einzug: Listenpunkte verschachteln, Absätze/Überschriften um 40 px (wie in der PC-App) */
+  function indent(dir) {
+    const d = st.doc, b = blockAt();
+    if (!b) return;
+    const li = b.closest('li');
+    if (li) {
+      const list = li.parentElement;
+      if (dir > 0) {
+        const prev = li.previousElementSibling;
+        if (!prev) return;
+        let sub = [...prev.children].reverse().find((c) => c.tagName === list.tagName);
+        if (!sub) { sub = list.cloneNode(false); (prev.querySelector(':scope>div') && list.getAttribute('data-type') === 'taskList' ? prev.querySelector(':scope>div') : prev).append(sub); }
+        sub.append(li);
+      } else {
+        const parentLi = list.parentElement && list.parentElement.closest('li');
+        if (!parentLi) return;
+        const after = [...list.children].slice([...list.children].indexOf(li) + 1);
+        parentLi.after(li);
+        if (after.length) { const l2 = list.cloneNode(false); l2.append(...after); li.append(l2); }
+        if (!list.children.length) list.remove();
+      }
+      caretInto(li.querySelector(':scope>div') || li, true);
+      return;
+    }
+    if (!/^(P|H[1-6])$/.test(b.tagName)) return;
+    const cur = parseFloat(b.style.marginLeft) || 0;
+    const n = Math.max(0, Math.min(400, Math.round(cur / 40) * 40 + dir * 40));
+    if (n) b.style.marginLeft = n + 'px'; else { b.style.removeProperty('margin-left'); if (!b.getAttribute('style')) b.removeAttribute('style'); }
+  }
+
+  // ------------------------------------------------------------ Notizbuch-Auswahl
+  const nbLabel = (nb) => (nb ? (nb.stack ? nb.stack + ' › ' : '') + nb.name : '');
+  function setNotebook(id) {
+    const all = S.notebooks || [];
+    const nb = all.find((n) => n.id === id) || all.find((n) => n.id === S.settings?.defaultNotebookId) || all[0];
+    const inp = q('#ednb');
+    inp.dataset.id = nb ? nb.id : '';
+    inp.value = nbLabel(nb);
+  }
+  function bindNotebookPicker() {
+    const inp = q('#ednb'), list = q('#ednblist');
+    let sel = 0, items = [];
+    const show = () => {
+      const f = fold(inp.value.trim());
+      const cur = (S.notebooks || []).find((n) => n.id === inp.dataset.id);
+      const all = [...(S.notebooks || [])].sort((a, b) => nbLabel(a).localeCompare(nbLabel(b), 'de'));
+      items = (!f || (cur && inp.value === nbLabel(cur)) ? all : all.filter((n) => fold(nbLabel(n)).includes(f))).slice(0, 60);
+      sel = 0;
+      list.innerHTML = items.length ? items.map((n, i) => `<div class="sc-nbi${i === sel ? ' sel' : ''}" data-id="${esc(n.id)}">${n.stack ? `<small>${esc(n.stack)} ›</small> ` : ''}${esc(n.name)}</div>`).join('') : '<div class="sc-nbnone">Kein Notizbuch gefunden. Neue Notizbücher bitte in der PC-App anlegen.</div>';
+      list.classList.remove('hidden');
+    };
+    const pick = (id) => { setNotebook(id); list.classList.add('hidden'); inp.blur(); };
+    inp.addEventListener('focus', () => { inp.select(); show(); });
+    inp.addEventListener('input', show);
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(0, Math.min(items.length - 1, sel + (e.key === 'ArrowDown' ? 1 : -1))); $$('.sc-nbi', list).forEach((x, i) => x.classList.toggle('sel', i === sel)); }
+      if (e.key === 'Enter') { e.preventDefault(); if (items[sel]) pick(items[sel].id); }
+      if (e.key === 'Escape') { setNotebook(inp.dataset.id); list.classList.add('hidden'); }
+    });
+    list.addEventListener('pointerdown', (e) => { const it = e.target.closest('.sc-nbi'); if (it) { e.preventDefault(); pick(it.dataset.id); } });
+    inp.addEventListener('blur', () => setTimeout(() => { if (!st.el) return; list.classList.add('hidden'); setNotebook(inp.dataset.id); }, 150));
+  }
+
+  // ------------------------------------------------------------ Speichern
+  async function readNoteJson(fileid) {
+    const z = unzip(await API.call('getzip', { fileids: fileid }, { binary: true, post: true }));
+    const k = Object.keys(z).find((n) => n.endsWith('note.json'));
+    return k ? JSON.parse(u8text(z[k])) : null;
+  }
+  /** Prüft, ob die Notiz seit Beginn der Bearbeitung anderswo geändert wurde. Ergebnis: { files } oder { conflict } */
+  async function checkBase() {
+    let r;
+    try { r = await API.call('listfolder', { folderid: st.base.folderid, timeformat: 'timestamp' }); }
+    catch (e) { if (e.code === 2005) return { gone: true }; throw e; }
+    const files = {};
+    for (const c of r.metadata.contents || []) if (!c.isfolder) files[c.name] = c;
+    const conflict = fsig(files['content.html']) !== st.base.content || fsig(files['note.json']) !== st.base.note;
+    return { files, conflict };
+  }
+  async function save(opt = {}) {
+    if (st.saving || !st.doc) return;
+    const title = q('#edtitle').value.trim();
+    const notebookId = q('#ednb').dataset.id;
+    if (!notebookId) { toast('Bitte ein Notizbuch wählen.'); return; }
+    const htmlNow = serialize();
+    if (!opt.trash && !st.isNew && !changed()) { close(true); return; }
+    st.saving = true;
+    q('#edsave').disabled = true;
+    busy('Wird gespeichert …');
+    try {
+      let id = st.id, msg = 'Gespeichert';
+      if (st.isNew) {
+        id = await createNote({ title, notebookId, html: htmlNow });
+      } else {
+        const chk = await checkBase();
+        if (opt.trash) {
+          if (chk.gone) throw new Error('Die Notiz ist in pCloud nicht mehr vorhanden.');
+          const meta = (await readNoteJson(chk.files['note.json'].fileid)) || {};
+          meta.trashed = Date.now(); meta.updated = Date.now();
+          await Scanner.upload(st.base.folderid, 'note.json', new Blob([JSON.stringify(meta, null, 1)], { type: 'application/json' }));
+          msg = 'In den Papierkorb verschoben';
+        } else if (chk.gone || chk.conflict) {
+          // anderswo geändert oder gelöscht: nichts überschreiben, eigene Fassung als neue Notiz
+          const t2 = (title || 'Ohne Titel') + ' (Konflikt – Fassung vom ' + (/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'Browser') + ')';
+          id = await createNote({ title: t2, notebookId, html: htmlNow });
+          msg = chk.gone ? 'Die Notiz wurde inzwischen gelöscht – Ihre Fassung wurde als neue Notiz gespeichert.'
+            : 'Die Notiz wurde inzwischen an einem anderen Gerät geändert. Ihre Fassung wurde als eigene Notiz „' + t2 + '“ gespeichert – bitte zusammenführen.';
+        } else {
+          const meta = (await readNoteJson(chk.files['note.json'].fileid)) || {};
+          if (htmlNow !== st.initial) await Scanner.upload(st.base.folderid, 'content.html', new Blob([htmlNow], { type: 'text/html' }));
+          meta.id = id; meta.title = title; meta.notebookId = notebookId; meta.updated = Date.now();
+          await Scanner.upload(st.base.folderid, 'note.json', new Blob([JSON.stringify(meta, null, 1)], { type: 'application/json' }));
+        }
+      }
+      busy('');
+      close(true);
+      await new Promise((r) => setTimeout(r, 120));
+      toast(msg, msg.length > 40 ? 9000 : 2600);
+      await sync();
+      if (S.notes.has(id)) openNote(id, { noHistory: true });
+    } catch (e) {
+      console.error(e);
+      busy('');
+      st.saving = false;
+      q('#edsave').disabled = false;
+      if (e.auth) toast('Die Anmeldung bei pCloud ist abgelaufen. Bitte den Text vorher kopieren, dann neu anmelden.', 9000);
+      else toast('Speichern fehlgeschlagen: ' + e.message + ' – bitte erneut „Fertig“ tippen.', 8000);
+    }
+  }
+  async function trash() {
+    if (st.isNew) { if (confirm('Neue Notiz verwerfen?')) close(true); return; }
+    if (!confirm('Diese Notiz in den Papierkorb verschieben? (In der PC-App wiederherstellbar.)')) return;
+    save({ trash: true });
+  }
+  async function createNote({ title, notebookId, html }) {
+    const nf0 = await Scanner.notesFolder();
+    const id = st.newId || (st.newId = Scanner.newId());
+    const nf = await Scanner.mkdir(nf0, id);
+    await Scanner.upload(nf, 'content.html', new Blob([html || '<p></p>'], { type: 'text/html' }));
+    const now = Date.now();
+    const meta = { id, title, notebookId, tagIds: [], created: now, updated: now, trashed: null, source: '', sourceUrl: '', author: '', hasOriginal: false, mail: null };
+    await Scanner.upload(nf, 'note.json', new Blob([JSON.stringify(meta, null, 1)], { type: 'application/json' }));
+    st.newId = null;
+    return id;
+  }
+
+  return { open, openNew, close, _st: st, _serialize: () => serialize() };
 })();
 </script>
 </body>
