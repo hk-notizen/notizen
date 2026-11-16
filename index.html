@@ -240,7 +240,8 @@ body.scanning{overflow:hidden}
 @keyframes scspin{to{transform:rotate(360deg)}}
 
 /* Bearbeiten (1.2.0) */
-.fab.fab2{bottom:calc(84px + env(safe-area-inset-bottom));width:46px;height:46px;right:21px;font-size:20px;background:#fff;color:var(--accent);border:1px solid var(--line)}
+.newbtn{margin-left:auto;flex:none;background:var(--accent);color:#fff;border:0;border-radius:16px;padding:6px 13px;font-size:14px;font-weight:600;white-space:nowrap}
+.newbtn:active{opacity:.8}
 #editbtn{font-size:14px;white-space:nowrap}
 body.editing{overflow:hidden}
 .editor{position:fixed;inset:0;z-index:90;background:#fff;display:flex;flex-direction:column;color:var(--t)}
@@ -309,7 +310,7 @@ body.editing{overflow:hidden}
   <div class="side-shade"></div>
   <section id="list">
     <div class="list-top">
-      <div class="list-head"><button class="icon-btn only-narrow" id="menubtn" title="Notizbücher">☰</button><h2 id="listtitle">Alle Notizen</h2></div>
+      <div class="list-head"><button class="icon-btn only-narrow" id="menubtn" title="Notizbücher">☰</button><h2 id="listtitle">Alle Notizen</h2><button class="newbtn" id="newbtn" title="Neue Notiz anlegen">＋ Neu</button></div>
       <div class="search"><span>🔍</span><input id="q" type="search" placeholder="Notizen durchsuchen" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="icon-btn" id="qclear" title="Suche leeren">✕</button></div>
       <div class="list-meta"><span id="count"></span>
         <select id="sort" title="Sortierung">
@@ -323,12 +324,11 @@ body.editing{overflow:hidden}
         </select></div>
     </div>
     <div class="notes" id="notes"></div>
-    <button class="fab fab2" id="newfab" title="Neue Notiz" aria-label="Neue Notiz"><span>✎</span></button>
     <button class="fab" id="scanfab" title="Foto oder Dokument erfassen" aria-label="Erfassen"><span>📷</span></button>
     <div class="resizer" id="resizer" title="Breite der Notizliste ändern (Doppelklick: Standardbreite)"></div>
   </section>
   <main id="view">
-    <div class="view-top"><button class="icon-btn only-mobile" id="backbtn" title="Zurück zur Liste">‹ Liste</button><span class="crumb" id="crumb"></span><button class="icon-btn" id="editbtn" title="Notiz bearbeiten">✎ Bearbeiten</button><button class="icon-btn wide-btn" id="widebtn" title="Notiz über die ganze Breite anzeigen">⤢ Breit</button></div>
+    <div class="view-top"><button class="icon-btn only-mobile" id="backbtn" title="Zurück zur Liste">‹ Liste</button><span class="crumb" id="crumb"></span><button class="icon-btn hidden" id="editbtn" title="Notiz bearbeiten">✎ Bearbeiten</button><button class="icon-btn wide-btn" id="widebtn" title="Notiz über die ganze Breite anzeigen">⤢ Breit</button></div>
     <div class="view-scroll">
       <div id="noview" class="no-note">Wählen Sie links eine Notiz aus.</div>
       <div id="notehost" class="hidden"></div>
@@ -2353,7 +2353,7 @@ body.editing{overflow:hidden}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -3315,6 +3315,7 @@ async function openNote(id, opt = {}) {
   const seq = ++openSeq;
   S.current = id;
   S.currentDoc = null;
+  $('#editbtn').classList.toggle('hidden', !!rec.trashed);
   $$('.note-item.active').forEach((e) => e.classList.remove('active'));
   $(`.note-item[data-id="${id}"]`)?.classList.add('active');
   if (isMobile()) {
@@ -3837,7 +3838,7 @@ function bind() {
   $('#setbtn').addEventListener('click', showSettings);
   $('#helpbtn').addEventListener('click', showHelp);
   $('#scanfab').addEventListener('click', () => Scanner.open());
-  $('#newfab').addEventListener('click', () => Editor.openNew());
+  $('#newbtn').addEventListener('click', () => Editor.openNew());
   $('#editbtn').addEventListener('click', () => Editor.open());
   // Suche
   let qt = null;
@@ -4860,7 +4861,7 @@ const Scanner = (() => {
 const Editor = (() => {
   const ED_CSS = `
     html{-webkit-text-size-adjust:100%}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;padding:14px 16px 40vh;min-height:60vh;outline:none;-webkit-user-select:text;user-select:text}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;padding:14px 16px 40vh 38px;min-height:60vh;outline:none;-webkit-user-select:text;user-select:text}
     body:empty::before{content:"Hier schreiben …";color:#9aa1a9}
     [data-attachment],[data-webclip]{display:block;border:1px solid #d5d9de;border-radius:8px;background:#f6f7f8;padding:10px 12px;margin:.5em 0;color:#4b5563;font-size:14px;-webkit-user-select:none;user-select:none}
     [data-attachment]::before{content:"📎 " attr(data-name)}
@@ -4868,7 +4869,11 @@ const Editor = (() => {
     .fold-arrow,.fold-more{display:none!important}
     ul[data-type="taskList"] li>label{-webkit-user-select:none;user-select:none}
     ul[data-type="taskList"] li>label input{width:20px;height:20px}
-    img{max-width:100%;height:auto}`;
+    img{max-width:100%;height:auto}
+    .nw-handle{position:absolute;display:none;align-items:center;justify-content:center;width:30px;height:30px;margin-top:-4px;border-radius:7px;color:#6b7280;font-size:18px;line-height:1;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;z-index:5;background:rgba(255,255,255,.85)}
+    .nw-handle:hover,.nw-handle.on{background:#e6f4ed;color:#1f8a5b}
+    .nw-drop{position:absolute;display:none;height:3px;background:#1f8a5b;border-radius:2px;z-index:6;pointer-events:none}
+    [data-nw-drag]{opacity:.35}`;
 
   const st = { el: null, frame: null, doc: null, id: null, isNew: false, base: null, initial: '', title0: '', nb0: '', saving: false, range: null };
 
@@ -4984,9 +4989,84 @@ const Editor = (() => {
     body.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && taskItemAt()) { e.preventDefault(); taskEnter(); }
     });
-    doc.addEventListener('selectionchange', () => { const s = doc.getSelection(); if (s && s.rangeCount && body.contains(s.anchorNode)) st.range = s.getRangeAt(0).cloneRange(); });
+    doc.addEventListener('selectionchange', () => { const s = doc.getSelection(); if (s && s.rangeCount && body.contains(s.anchorNode)) { st.range = s.getRangeAt(0).cloneRange(); if (!drag) placeHandle(movableAt(s.anchorNode)); } });
+    setupHandle(doc, body);
     if (o.isNew) { const p0 = body.querySelector('p'); if (p0) caretInto(p0, false); setTimeout(() => q('#edtitle').focus(), 50); }
   }
+  // ------------------------------------------------------------ Greifpunkt zum Verschieben (wie in der PC-App)
+  let hd = null, line = null, cur = null, drag = null;
+  /** verschiebbare Einheit: Listen-/Checklistenpunkt, sonst Block direkt unter body */
+  function movableAt(n) {
+    const body = st.doc && st.doc.body;
+    if (!body || !n) return null;
+    if (n.nodeType !== 1) n = n.parentElement;
+    if (!n || !body.contains(n) || n === body) return null;
+    const li = n.closest('li');
+    if (li && body.contains(li)) return li;
+    while (n.parentElement && n.parentElement !== body) n = n.parentElement;
+    return n.parentElement === body ? n : null;
+  }
+  function placeHandle(b) {
+    cur = b;
+    if (!hd) return;
+    if (!b || !b.getClientRects().length) { hd.style.display = 'none'; return; }
+    const w = st.frame.contentWindow, r = b.getBoundingClientRect();
+    hd.style.display = 'flex';
+    hd.style.top = (r.top + w.scrollY) + 'px';
+    hd.style.left = Math.max(2, r.left + w.scrollX - (b.tagName === 'LI' ? 52 : 34)) + 'px';
+  }
+  function setupHandle(doc, body) {
+    hd = doc.createElement('div'); hd.className = 'nw-handle'; hd.textContent = '⠿'; hd.title = 'Ziehen, um den Absatz zu verschieben';
+    line = doc.createElement('div'); line.className = 'nw-drop';
+    doc.documentElement.append(hd, line); // außerhalb von body -> wird nicht gespeichert
+    const w = doc.defaultView;
+    w.addEventListener('scroll', () => { if (!drag) placeHandle(cur); }, { passive: true });
+    w.addEventListener('resize', () => placeHandle(cur));
+    body.addEventListener('input', () => { if (!drag) placeHandle(movableAt(doc.getSelection().anchorNode)); });
+    body.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' && !drag) placeHandle(movableAt(e.target)); });
+    hd.addEventListener('pointerdown', (e) => {
+      if (!cur) return;
+      e.preventDefault();
+      try { hd.setPointerCapture(e.pointerId); } catch {}
+      drag = { el: cur, target: null, before: true, timer: null };
+      cur.setAttribute('data-nw-drag', '1');
+      hd.classList.add('on');
+    });
+    hd.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      e.preventDefault();
+      const sibs = [...drag.el.parentElement.children].filter((x) => x !== drag.el && x.getClientRects().length);
+      let target = null, before = true;
+      for (const s of sibs) { const r = s.getBoundingClientRect(); if (e.clientY < r.top + r.height / 2) { target = s; break; } }
+      if (!target && sibs.length) { target = sibs[sibs.length - 1]; before = false; }
+      drag.target = target; drag.before = before;
+      hd.style.top = (e.clientY + w.scrollY - 12) + 'px';
+      if (target) {
+        const r = target.getBoundingClientRect(), pr = drag.el.parentElement.getBoundingClientRect();
+        line.style.display = 'block';
+        line.style.top = ((before ? r.top : r.bottom) + w.scrollY - 2) + 'px';
+        line.style.left = (pr.left + w.scrollX) + 'px';
+        line.style.width = Math.max(40, pr.width) + 'px';
+      }
+      // am Rand automatisch blättern
+      const edge = 48, h = w.innerHeight;
+      clearInterval(drag.timer);
+      if (e.clientY < edge || e.clientY > h - edge) { const dy = e.clientY < edge ? -14 : 14; drag.timer = setInterval(() => w.scrollBy(0, dy), 30); }
+    });
+    const end = () => {
+      if (!drag) return;
+      clearInterval(drag.timer);
+      const d = drag; drag = null;
+      d.el.removeAttribute('data-nw-drag');
+      line.style.display = 'none';
+      hd.classList.remove('on');
+      if (d.target) { if (d.before) d.target.before(d.el); else d.target.after(d.el); }
+      placeHandle(d.el);
+    };
+    hd.addEventListener('pointerup', end);
+    hd.addEventListener('pointercancel', end);
+  }
+
   function lockEl(e) { e.setAttribute('contenteditable', 'false'); e.setAttribute('data-nw-ce', '1'); }
 
   /** Aktuellen Inhalt als HTML (wie gespeichert) */
@@ -4997,6 +5077,7 @@ const Editor = (() => {
     // leere style-Attribute, die der Browser beim Bearbeiten erzeugt, entfernen (vorhandene bleiben)
     for (const e of c.querySelectorAll('[style=""]:not([data-nw-es])')) e.removeAttribute('style');
     for (const e of c.querySelectorAll('[data-nw-es]')) e.removeAttribute('data-nw-es');
+    for (const e of c.querySelectorAll('[data-nw-drag]')) e.removeAttribute('data-nw-drag');
     return c.innerHTML;
   }
   const changed = () => !!st.doc && (serialize() !== st.initial || q('#edtitle').value.trim() !== st.title0.trim() || q('#ednb').dataset.id !== st.nb0);
@@ -5004,7 +5085,7 @@ const Editor = (() => {
   function close(force, fromPop) {
     if (!st.el) return;
     if (!force && changed() && !confirm('Änderungen verwerfen?')) { if (fromPop) history.pushState({ edit: true }, ''); return; }
-    st.el.remove(); st.el = null; st.doc = null; st.frame = null;
+    st.el.remove(); st.el = null; st.doc = null; st.frame = null; hd = line = cur = drag = null;
     document.body.classList.remove('editing');
     if (!fromPop && history.state?.edit) history.back();
   }
