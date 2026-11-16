@@ -2255,7 +2255,7 @@ body.note-wide .view-inner{max-width:none}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.0.11';
+const VERSION = '1.0.12';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -2828,7 +2828,7 @@ const Search = {
         let ids = new Set(items.map((n) => n.id));
         if (a.terms.length || a.phrases.length) {
           const words = [...a.terms, ...a.phrases.flatMap((x) => tokenize(x))];
-          const res = this.ms.search(words.join(' '), { filter: (r) => ids.has(r.id), combineWith: a.any ? 'OR' : 'AND', prefix: !negated });
+          const res = this.ms.search(words.join(' '), { filter: (r) => ids.has(r.id), combineWith: a.any ? 'OR' : 'AND', prefix: true });
           let hit = new Set(res.map((r) => r.id));
           if (a.phrases.length) {
             hit = new Set([...hit].filter((id) => {
@@ -2848,7 +2848,7 @@ const Search = {
           ids = hit;
         }
         if (a.neg.length || a.negPhrases.length) {
-          for (const w of a.neg) this.ms.search(w, { prefix: false, fuzzy: false }).forEach((r) => ids.delete(r.id));
+          for (const w of a.neg) this.ms.search(w, { prefix: true, fuzzy: false }).forEach((r) => ids.delete(r.id));
           if (a.negPhrases.length) for (const id of [...ids]) { const n = byId.get(id); const h = fold([n.title, n.text, n.attText].join('\n')); if (a.negPhrases.some((x) => hasPhrase(h, x))) ids.delete(id); }
         }
         return ids;
@@ -2885,7 +2885,7 @@ const Search = {
     }
     if ((pq.neg.length || pq.negPhrases.length) && this.ms) {
       const ex = new Set();
-      for (const w of pq.neg) this.ms.search(w, { prefix: false, fuzzy: false }).forEach((r) => ex.add(r.id));
+      for (const w of pq.neg) this.ms.search(w, { prefix: true, fuzzy: false }).forEach((r) => ex.add(r.id));
       list = list.filter((n) => !ex.has(n.id));
       if (pq.negPhrases.length) list = list.filter((n) => { const h = fold([n.title, n.text, n.attText].join('\n')); return !pq.negPhrases.some((p) => hasPhrase(h, p)); });
     }
@@ -3568,11 +3568,13 @@ function showHelp() {
   const rows = [
     ['wort1 wort2', 'Notizen, die alle Wörter enthalten (auch als Wortanfang: „Rent“ findet „Rente“)'],
     ['"genaue Wortfolge"', 'Wortgruppe genau so'],
-    ['-wort', 'Notizen ohne dieses Wort'],
+    ['-wort', 'Notizen ohne Wörter, die so beginnen (-Konto schließt auch Kontoauszug aus)'],
+    ['-"Wort"', 'Notizen ohne genau dieses Wort (-"Konto" schließt Kontoauszug nicht aus)'],
     ['any: wort1 wort2', 'mindestens eines der Wörter'],
     ['wort1 UND wort2', 'beide Wörter (wie wort1 wort2)'],
     ['wort1 ODER wort2', 'mindestens eines der beiden'],
-    ['NICHT wort', 'ohne dieses Wort (wie -wort)'],
+    ['NICHT wort · NICHT "Wort"', 'wie -wort bzw. -"Wort"'],
+    ['wort*', 'Wortanfang ausdrücklich (gilt ohne Anführungszeichen ohnehin)'],
     ['Rechnung (Telekom ODER Vodafone)', 'Klammern legen fest, was zusammengehört; auch mit Wortgruppen und Feldern, z. B. NICHT tag:erledigt'],
     ['notizbuch:Name', 'nur in Notizbüchern, deren Name so beginnt'],
     ['stapel:Name', 'nur in diesem Stapel'],
