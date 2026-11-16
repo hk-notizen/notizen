@@ -2255,7 +2255,7 @@ body.note-wide .view-inner{max-width:none}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.0.9';
+const VERSION = '1.0.10';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -2851,8 +2851,9 @@ const Search = {
       const allowed = new Set(list.map((n) => n.id));
       const words = [...pq.terms, ...pq.phrases.flatMap((p) => tokenize(p))];
       let res = this.ms.search(words.join(' '), { filter: (r) => allowed.has(r.id), combineWith: pq.any ? 'OR' : 'AND' });
-      if (!res.length && !pq.phrases.length) {
-        res = this.ms.search(words.join(' '), { filter: (r) => allowed.has(r.id), combineWith: pq.any ? 'OR' : 'AND', fuzzy: (t) => (t.length >= 4 ? 0.25 : false) });
+      if (!res.length && !pq.phrases.length && !pq.any && words.length === 1) {
+        // nur bei einem einzelnen Suchwort: ähnliche Schreibweise (höchstens 1 Buchstabe Unterschied) zulassen
+        res = this.ms.search(words.join(' '), { filter: (r) => allowed.has(r.id), combineWith: pq.any ? 'OR' : 'AND', fuzzy: (t) => (t.length >= 5 ? 1 : false) });
         if (res.length) fuzzyUsed = true;
       }
       scores = new Map(res.map((r) => [r.id, r.score]));
