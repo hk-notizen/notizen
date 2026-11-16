@@ -2255,7 +2255,7 @@ body.note-wide .view-inner{max-width:none}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.0.10';
+const VERSION = '1.0.11';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -2597,14 +2597,25 @@ function parseQuery(q) {
   }
   return out;
 }
+/** Wortfolge in Anführungszeichen: genau diese Wörter als ganze Wörter, nur durch Leer-/Satzzeichen getrennt */
+function phraseRegex(p, global) {
+  const toks = tokenize(fold(p));
+  if (!toks.length) return null;
+  const e = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(?<![\\p{L}\\p{N}])' + toks.map(e).join('[^\\p{L}\\p{N}]+') + '(?![\\p{L}\\p{N}])', global ? 'gu' : 'u');
+}
+const hasPhrase = (hayFolded, p) => { const re = phraseRegex(p); return !!re && re.test(hayFolded); };
+function phraseRanges(folded, p) {
+  const re = phraseRegex(p, true), out = [];
+  if (!re) return out;
+  let m;
+  while ((m = re.exec(folded))) { out.push([m.index, m.index + m[0].length]); if (!m[0].length) re.lastIndex++; }
+  return out;
+}
 function highlight(text, terms, phrases = []) {
   const { folded, map } = foldWithMap(text);
   const ranges = [];
-  for (const p of phrases) {
-    const fp = fold(p);
-    let i = folded.indexOf(fp);
-    while (fp && i >= 0) { ranges.push([i, i + fp.length]); i = folded.indexOf(fp, i + fp.length); }
-  }
+  for (const p of phrases) ranges.push(...phraseRanges(folded, p));
   for (const t of terms) {
     if (!t) continue;
     let i = folded.indexOf(t);
@@ -2628,7 +2639,7 @@ function makeSnippet(text, terms, phrases) {
   text = text.replace(PUA, '');
   const { folded, map } = foldWithMap(text.length > 200000 ? text.slice(0, 200000) : text);
   let best = -1;
-  for (const p of phrases) { const i = folded.indexOf(fold(p)); if (i >= 0) { best = i; break; } }
+  for (const p of phrases) { const r = phraseRanges(folded, p); if (r.length) { best = r[0][0]; break; } }
   if (best < 0) {
     for (const t of terms) {
       let i = folded.indexOf(t);
@@ -2823,21 +2834,22 @@ const Search = {
             hit = new Set([...hit].filter((id) => {
               const n = byId.get(id);
               const hay = fold([n.title, n.text, n.attText].join('\n')).replace(/\s+/g, ' ');
-              const ok = a.phrases.map((x) => hay.includes(fold(x).replace(/\s+/g, ' ')));
+              const ok = a.phrases.map((x) => hasPhrase(hay, x));
               return a.any ? ok.some(Boolean) : ok.every(Boolean);
             }));
           }
           if (!negated) {
             for (const r of res) if (hit.has(r.id)) sc.set(r.id, (sc.get(r.id) || 0) + r.score);
-            res.slice(0, 300).forEach((r) => r.terms.forEach((t) => termSet.add(t)));
-            words.forEach((w) => termSet.add(fold(w)));
+            const free = a.terms.map((w) => fold(w));
+            res.slice(0, 300).forEach((r) => r.terms.forEach((t) => { if (free.some((w) => t.startsWith(w))) termSet.add(t); }));
+            free.forEach((w) => termSet.add(w));
             phr.push(...a.phrases);
           }
           ids = hit;
         }
         if (a.neg.length || a.negPhrases.length) {
           for (const w of a.neg) this.ms.search(w, { prefix: false, fuzzy: false }).forEach((r) => ids.delete(r.id));
-          if (a.negPhrases.length) for (const id of [...ids]) { const n = byId.get(id); const h = fold(n.title + '\n' + n.text); if (a.negPhrases.some((x) => h.includes(fold(x)))) ids.delete(id); }
+          if (a.negPhrases.length) for (const id of [...ids]) { const n = byId.get(id); const h = fold([n.title, n.text, n.attText].join('\n')); if (a.negPhrases.some((x) => hasPhrase(h, x))) ids.delete(id); }
         }
         return ids;
       };
@@ -2858,14 +2870,15 @@ const Search = {
       }
       scores = new Map(res.map((r) => [r.id, r.score]));
       const termSet = new Set();
-      res.slice(0, 300).forEach((r) => r.terms.forEach((t) => termSet.add(t)));
-      words.forEach((w) => termSet.add(fold(w)));
+      const free = pq.terms.map((w) => fold(w));
+      res.slice(0, 300).forEach((r) => r.terms.forEach((t) => { if (!pq.phrases.length || free.some((w) => t.startsWith(w))) termSet.add(t); }));
+      free.forEach((w) => termSet.add(w));
       hlTerms = [...termSet];
       list = list.filter((n) => scores.has(n.id));
       if (pq.phrases.length) {
         list = list.filter((n) => {
           const hay = fold([n.title, n.text, n.attText].join('\n')).replace(/\s+/g, ' ');
-          const ok = pq.phrases.map((p) => hay.includes(fold(p).replace(/\s+/g, ' ')));
+          const ok = pq.phrases.map((p) => hasPhrase(hay, p));
           return pq.any ? ok.some(Boolean) : ok.every(Boolean);
         });
       }
@@ -2874,7 +2887,7 @@ const Search = {
       const ex = new Set();
       for (const w of pq.neg) this.ms.search(w, { prefix: false, fuzzy: false }).forEach((r) => ex.add(r.id));
       list = list.filter((n) => !ex.has(n.id));
-      if (pq.negPhrases.length) list = list.filter((n) => { const h = fold(n.title + '\n' + n.text); return !pq.negPhrases.some((p) => h.includes(fold(p))); });
+      if (pq.negPhrases.length) list = list.filter((n) => { const h = fold([n.title, n.text, n.attText].join('\n')); return !pq.negPhrases.some((p) => hasPhrase(h, p)); });
     }
     const cmp = {
       'updated-desc': (a, b) => b.updated - a.updated,
@@ -3514,7 +3527,7 @@ function markTerms(root, terms, phrases) {
     if (!text.trim()) continue;
     const { folded, map } = foldWithMap(text);
     const ranges = [];
-    for (const p of phrases) { const fp = fold(p); let i = fp ? folded.indexOf(fp) : -1; while (i >= 0) { ranges.push([i, i + fp.length]); i = folded.indexOf(fp, i + fp.length); } }
+    for (const p of phrases) ranges.push(...phraseRanges(folded, p));
     for (const t of terms) {
       if (!t) continue;
       let i = folded.indexOf(t);
