@@ -165,6 +165,78 @@ body.note-wide .view-inner{max-width:none}
   .list-top,.view-top,.side-top{padding-top:max(12px,env(safe-area-inset-top))}
   .notes,.view-scroll,.side-scroll{padding-bottom:env(safe-area-inset-bottom)}
 }
+
+/* Erfassen: Schaltfläche und Scanner (1.1.0) */
+.fab{position:absolute;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:5;width:56px;height:56px;border-radius:50%;border:0;background:var(--accent);color:#fff;font-size:24px;box-shadow:0 4px 14px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center}
+.fab:active{transform:scale(.95)}
+body.scanning{overflow:hidden}
+.scanner{position:fixed;inset:0;z-index:100;background:#000;color:#fff;font-size:15px;-webkit-user-select:none;user-select:none}
+.sc-cam{position:absolute;inset:0}
+.sc-cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.sc-cam canvas#scov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.sc-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+.sc-flash.go{animation:scflash .35s ease-out}
+@keyframes scflash{0%{opacity:.85}100%{opacity:0}}
+.sc-top{position:absolute;left:0;right:0;top:0;padding:calc(10px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 10px max(12px,env(safe-area-inset-left));display:flex;align-items:center;gap:10px;background:linear-gradient(rgba(0,0,0,.55),transparent)}
+.sc-hint{flex:1;text-align:center;font-size:14px;text-shadow:0 1px 3px #000;line-height:1.3}
+.sc-hint.err{color:#ffb4a8}
+.sc-btn{background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:20px;min-width:40px;height:40px;padding:0 10px;font-size:17px}
+.sc-btn.on{background:#f1c40f;color:#000;border-color:#f1c40f}
+.sc-auto{font-size:12px;font-weight:700;letter-spacing:.5px}
+.sc-bottom{position:absolute;left:0;right:0;bottom:0;padding:8px max(12px,env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));background:linear-gradient(transparent,rgba(0,0,0,.65))}
+.sc-modes{display:flex;justify-content:center;gap:6px;margin-bottom:10px}
+.sc-modes button{background:transparent;border:0;color:#ddd;font-weight:600;padding:6px 12px;border-radius:16px;font-size:14px;letter-spacing:.3px}
+.sc-modes button.on{background:rgba(255,255,255,.18);color:#f1c40f}
+.sc-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sc-side{width:84px;display:flex;flex-direction:column;align-items:center;gap:4px;background:transparent;border:0;color:#fff;font-size:13px;cursor:pointer}
+.sc-side:disabled{opacity:.4}
+.sc-ico{font-size:26px;line-height:1}
+.sc-thumb{width:44px;height:44px;border-radius:6px;background:#333 center/cover no-repeat;border:2px solid #fff}
+.sc-shutter{width:74px;height:74px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.25);padding:0;flex:none}
+.sc-shutter:active{background:#fff}
+@media (orientation:landscape) and (max-height:600px){
+  .sc-bottom{top:0;left:auto;width:150px;padding:calc(64px + env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) 12px 8px;background:linear-gradient(90deg,transparent,rgba(0,0,0,.65));display:flex;flex-direction:column;justify-content:center}
+  .sc-row{flex-direction:column;gap:14px}
+  .sc-modes{flex-direction:column;align-items:center;margin:0 0 12px}
+  .sc-top{right:150px}
+}
+.sc-review,.sc-edit{position:absolute;inset:0;background:var(--bg);color:var(--t);display:flex;flex-direction:column;-webkit-user-select:text;user-select:text}
+.sc-rhead,.sc-etop{display:flex;align-items:center;gap:12px;padding:calc(10px + env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 10px max(12px,env(safe-area-inset-left));background:#fff;border-bottom:1px solid var(--line)}
+.sc-etop span{flex:1;text-align:center;font-weight:600}
+.sc-rbody{flex:1;overflow:auto;display:flex;gap:18px;padding:14px max(14px,env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
+.sc-grid{flex:1;display:flex;flex-wrap:wrap;gap:12px;align-content:flex-start}
+.sc-cell{width:132px;display:flex;flex-direction:column;align-items:center;gap:5px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;color:var(--m)}
+.sc-cell img{max-width:114px;max-height:150px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.sc-cell span{text-align:center;overflow-wrap:anywhere}
+.sc-file{width:90px;height:120px;display:flex;align-items:center;justify-content:center;background:#c0392b;color:#fff;font-weight:700;border-radius:4px}
+.sc-tip{width:100%;font-size:13px;color:var(--m);margin:2px 0 0}
+.sc-form{width:340px;flex:none}
+.sc-form label{display:block;font-size:13px;color:var(--m);margin:12px 0 4px}
+.sc-form label:first-child{margin-top:0}
+.sc-form input,.sc-form textarea{width:100%;padding:10px 12px;border:1px solid #cfd4d9;border-radius:8px;background:#fff;font-size:16px;font-family:inherit}
+.sc-nb{position:relative}
+.sc-nblist{position:absolute;left:0;right:0;top:100%;margin-top:4px;max-height:260px;overflow:auto;background:#fff;border:1px solid #cfd4d9;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:3}
+.sc-nbi{padding:10px 12px;border-bottom:1px solid #f0f1f3;cursor:pointer}
+.sc-nbi small{color:var(--m)}
+.sc-nbi.sel,.sc-nbi:hover{background:var(--sel)}
+.sc-nbnone{padding:10px 12px;color:var(--m);font-size:13px}
+.sc-err{color:#c2382b;font-size:14px;margin-top:10px;min-height:1em}
+@media (max-width:760px){.sc-rbody{flex-direction:column}.sc-form{width:auto}.sc-cell{width:calc(50% - 6px)}.sc-cell img{max-width:100%}}
+.sc-edit{background:#111;color:#fff}
+.sc-edit .sc-etop{background:#1b1b1b;border-color:#333}
+.sc-ecanvas{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.sc-ecanvas canvas{touch-action:none;transition:transform .2s}
+.sc-etools{padding:10px max(12px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));background:#1b1b1b}
+.sc-filters{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.sc-filters button{background:#2a2a2a;border:1px solid #444;color:#ddd;border-radius:16px;padding:7px 12px;font-size:14px}
+.sc-filters button.on{background:#f1c40f;color:#000;border-color:#f1c40f}
+.sc-eacts{display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap}
+.sc-ehint{text-align:center;font-size:12px;color:#aaa;margin:8px 0 0}
+@media (orientation:landscape) and (max-height:600px){.sc-edit{display:grid;grid-template-columns:1fr 240px;grid-template-rows:auto minmax(0,1fr)}.sc-edit .sc-etop{grid-column:1/3}.sc-ecanvas{grid-column:1;grid-row:2}.sc-etools{grid-column:2;grid-row:2;display:flex;flex-direction:column;justify-content:center;overflow:auto}}
+.sc-busy{position:absolute;inset:0;background:rgba(0,0,0,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:5;color:#fff;font-size:15px}
+.sc-spin{width:42px;height:42px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:scspin .9s linear infinite}
+.sc-spin.small{width:28px;height:28px;border-color:#ddd;border-top-color:var(--accent);margin:40px}
+@keyframes scspin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -173,7 +245,7 @@ body.note-wide .view-inner{max-width:none}
 <div id="login" class="hidden">
   <div class="login-box">
     <h1><span class="logo">✎</span>Notizen</h1>
-    <p class="sub">Ihre Notizen-Ablage in pCloud lesen und durchsuchen.</p>
+    <p class="sub">Ihre Notizen-Ablage in pCloud lesen, durchsuchen und unterwegs ergänzen.</p>
     <form id="loginform" autocomplete="on">
       <div id="pwbox">
         <label for="email">pCloud-E-Mail-Adresse</label>
@@ -227,6 +299,7 @@ body.note-wide .view-inner{max-width:none}
         </select></div>
     </div>
     <div class="notes" id="notes"></div>
+    <button class="fab" id="scanfab" title="Foto oder Dokument erfassen" aria-label="Erfassen"><span>📷</span></button>
     <div class="resizer" id="resizer" title="Breite der Notizliste ändern (Doppelklick: Standardbreite)"></div>
   </section>
   <main id="view">
@@ -2255,7 +2328,7 @@ body.note-wide .view-inner{max-width:none}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.0.12';
+const VERSION = '1.1.0';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -2970,6 +3043,7 @@ async function sync(manual = false) {
     const by = (n) => items.find((x) => !x.isfolder && x.name === n);
     if (!by('notizen-ablage.json')) throw new ApiError(-3, `Im pCloud-Ordner „${S.root}“ liegt keine Notizen-Ablage (Datei notizen-ablage.json fehlt).`);
     const notesF = items.find((x) => x.isfolder && x.name === 'notes');
+    S.notesFolderId = notesF ? notesF.folderid : null;
     // Notizbücher, Schlagwörter, gespeicherte Suchen, Einstellungen
     const metaFiles = ['notebooks.json', 'tags.json', 'searches.json', 'settings.json'].map(by).filter(Boolean);
     const metaSig = metaFiles.map((f) => f.name + fsig(f)).join('|');
@@ -3596,7 +3670,7 @@ function showSettings() {
     <input type="text" id="rootpath" value="${esc(S.root)}">
     <p style="font-size:13px;color:#6b7280;margin:6px 0 0">${Cache.enabled ? 'Die Notiztexte werden auf diesem Gerät zwischengespeichert; beim Öffnen wird nur Geändertes nachgeladen.' : 'Auf diesem Gerät wird nichts dauerhaft gespeichert; beim nächsten Öffnen werden die Notizen neu geladen.'}</p>
     <div class="row"><button class="btn light" id="clearcache">Zwischenspeicher leeren</button><button class="btn light" id="logoutbtn">Abmelden</button><button class="btn" id="saveset">Übernehmen</button></div>
-    <p style="font-size:12px;color:#9aa1a9;margin:14px 0 0">Notizen Web ${VERSION} · nur Lesen und Suchen</p>`, (ov) => {
+    <p style="font-size:12px;color:#9aa1a9;margin:14px 0 0">Notizen Web ${VERSION} · Lesen, Suchen, Erfassen (Foto und Dokumentenscanner)</p>`, (ov) => {
     $('#saveset', ov).onclick = async () => {
       const v = $('#rootpath', ov).value.trim() || '/Notizen-Ablage';
       ov.remove();
@@ -3735,6 +3809,7 @@ function bind() {
   $('#syncbtn').addEventListener('click', () => sync(true));
   $('#setbtn').addEventListener('click', showSettings);
   $('#helpbtn').addEventListener('click', showHelp);
+  $('#scanfab').addEventListener('click', () => Scanner.open());
   // Suche
   let qt = null;
   $('#q').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value; runQuery(); }, 220); });
@@ -3813,6 +3888,893 @@ function init() {
   } else showLogin();
 }
 document.addEventListener('DOMContentLoaded', init);
+</script>
+<script>// ---------------------------------------------------------------- Scanner: Bildverarbeitung (OpenCV)
+// Läuft im Browser (Notizen Web) und zum Testen in Node. Alle Funktionen erhalten das OpenCV-Objekt `cv`.
+const ScanCore = (() => {
+  /** Ecken sortieren: oben links, oben rechts, unten rechts, unten links */
+  function orderQuad(pts) {
+    const s = pts.map((p) => p[0] + p[1]);
+    const d = pts.map((p) => p[0] - p[1]);
+    const tl = pts[s.indexOf(Math.min(...s))];
+    const br = pts[s.indexOf(Math.max(...s))];
+    const tr = pts[d.indexOf(Math.max(...d))];
+    const bl = pts[d.indexOf(Math.min(...d))];
+    const q = [tl, tr, br, bl];
+    // Doppelte Ecken (bei stark gedrehten Blättern) -> nach Winkel um den Mittelpunkt sortieren
+    if (new Set(q.map((p) => p.join(','))).size < 4) {
+      const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+      const byAng = [...pts].sort((a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx));
+      // beginnen mit dem Punkt, der am ehesten oben links liegt
+      let k = 0, best = Infinity;
+      byAng.forEach((p, i) => { if (p[0] + p[1] < best) { best = p[0] + p[1]; k = i; } });
+      return [0, 1, 2, 3].map((i) => byAng[(k + i) % 4]);
+    }
+    return q;
+  }
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  function polyArea(q) {
+    let a = 0;
+    for (let i = 0; i < q.length; i++) { const p = q[i], n = q[(i + 1) % q.length]; a += p[0] * n[1] - n[0] * p[1]; }
+    return Math.abs(a) / 2;
+  }
+  /** Prüft, ob ein Viereck als Blatt plausibel ist (Winkel, Seitenverhältnis) */
+  function plausible(q, W, H) {
+    for (let i = 0; i < 4; i++) {
+      const a = q[(i + 3) % 4], b = q[i], c = q[(i + 1) % 4];
+      const v1 = [a[0] - b[0], a[1] - b[1]], v2 = [c[0] - b[0], c[1] - b[1]];
+      const cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (Math.hypot(...v1) * Math.hypot(...v2) || 1);
+      if (Math.abs(cos) > 0.6) return false; // Winkel zwischen ca. 53° und 127°
+    }
+    const w = (dist(q[0], q[1]) + dist(q[3], q[2])) / 2, h = (dist(q[0], q[3]) + dist(q[1], q[2])) / 2;
+    const r = Math.max(w, h) / Math.max(1, Math.min(w, h));
+    if (r > 4.5) return false;
+    // nicht genau der Bildrand
+    const m = 0.01 * Math.max(W, H);
+    if (q.every((p) => p[0] < m || p[1] < m || p[0] > W - m || p[1] > H - m)) return false;
+    return true;
+  }
+  function bestQuadIn(cv, bin, W, H, minArea) {
+    const contours = new cv.MatVector(), hier = new cv.Mat();
+    cv.findContours(bin, contours, hier, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+    let best = null, bestArea = minArea;
+    for (let i = 0; i < contours.size(); i++) {
+      const c = contours.get(i);
+      const area = cv.contourArea(c);
+      if (area < bestArea) { c.delete(); continue; }
+      const hull = new cv.Mat();
+      cv.convexHull(c, hull, false, true);
+      const peri = cv.arcLength(hull, true);
+      let q = null;
+      for (const eps of [0.02, 0.03, 0.05]) {
+        const ap = new cv.Mat();
+        cv.approxPolyDP(hull, ap, eps * peri, true);
+        if (ap.rows === 4) { q = []; for (let k = 0; k < 4; k++) q.push([ap.data32S[2 * k], ap.data32S[2 * k + 1]]); }
+        ap.delete();
+        if (q) break;
+      }
+      hull.delete(); c.delete();
+      if (!q) continue;
+      q = orderQuad(q);
+      const a = polyArea(q);
+      if (a > bestArea && plausible(q, W, H)) { best = q; bestArea = a; }
+    }
+    contours.delete(); hier.delete();
+    return best;
+  }
+  /**
+   * Blatt im Bild suchen. src: RGBA-Mat (am besten verkleinert, ca. 400–600 px).
+   * Ergebnis: 4 Ecken [[x,y],…] in Koordinaten von src oder null.
+   */
+  function detect(cv, src, { minFrac = 0.12 } = {}) {
+    const W = src.cols, H = src.rows, minArea = minFrac * W * H;
+    const gray = new cv.Mat(), blur = new cv.Mat(), edges = new cv.Mat(), tmp = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    // Schrift und Muster unterdrücken, Blattränder erhalten
+    const k5 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+    cv.morphologyEx(gray, tmp, cv.MORPH_CLOSE, k5);
+    cv.GaussianBlur(tmp, blur, new cv.Size(5, 5), 0);
+    let q = null;
+    try {
+      // 1. Kanten
+      const med = median(blur);
+      cv.Canny(blur, edges, Math.max(10, 0.5 * med), Math.min(255, 1.2 * med));
+      const k3 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+      cv.dilate(edges, edges, k3);
+      k3.delete();
+      q = bestQuadIn(cv, edges, W, H, minArea);
+      // 2. Helligkeit (helles Blatt auf dunklerem Grund)
+      if (!q) {
+        cv.threshold(blur, tmp, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+        cv.morphologyEx(tmp, tmp, cv.MORPH_OPEN, k5);
+        q = bestQuadIn(cv, tmp, W, H, minArea);
+      }
+    } finally {
+      gray.delete(); blur.delete(); edges.delete(); tmp.delete(); k5.delete();
+    }
+    return q;
+  }
+  function median(mat) {
+    const d = mat.data, n = d.length, h = new Uint32Array(256);
+    for (let i = 0; i < n; i += 7) h[d[i]]++;
+    let c = 0; const half = Math.ceil(n / 7) / 2;
+    for (let v = 0; v < 256; v++) { c += h[v]; if (c >= half) return v; }
+    return 128;
+  }
+  /** Blatt entzerren. quad in Koordinaten von src. Längere Seite höchstens maxLong Pixel. */
+  function warp(cv, src, quad, maxLong = 3300) {
+    let w = Math.max(dist(quad[0], quad[1]), dist(quad[3], quad[2]));
+    let h = Math.max(dist(quad[0], quad[3]), dist(quad[1], quad[2]));
+    // nahe am DIN-Format (A4/A5): Seitenverhältnis genau setzen (perspektivische Verkürzung ausgleichen)
+    const R = Math.SQRT2, lr = Math.max(w, h) / Math.max(1, Math.min(w, h));
+    if (Math.abs(lr / R - 1) < 0.12) { if (h >= w) w = h / R; else h = w / R; }
+    const s = Math.min(1, maxLong / Math.max(w, h));
+    w = Math.max(16, Math.round(w * s)); h = Math.max(16, Math.round(h * s));
+    const from = cv.matFromArray(4, 1, cv.CV_32FC2, quad.flat());
+    const to = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, w, 0, w, h, 0, h]);
+    const M = cv.getPerspectiveTransform(from, to);
+    const dst = new cv.Mat();
+    cv.warpPerspective(src, dst, M, new cv.Size(w, h), cv.INTER_LINEAR, cv.BORDER_REPLICATE, new cv.Scalar());
+    from.delete(); to.delete(); M.delete();
+    return dst;
+  }
+  /** Hintergrund (Papier) eines Kanals schätzen: Schrift entfernen, glätten */
+  function background(cv, ch) {
+    const small = new cv.Mat(), bg = new cv.Mat();
+    const f = 8;
+    cv.resize(ch, small, new cv.Size(Math.max(8, Math.round(ch.cols / f)), Math.max(8, Math.round(ch.rows / f))), 0, 0, cv.INTER_AREA);
+    const k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(9, 9));
+    cv.dilate(small, small, k);
+    cv.medianBlur(small, small, 15);
+    cv.GaussianBlur(small, small, new cv.Size(9, 9), 0);
+    cv.resize(small, bg, new cv.Size(ch.cols, ch.rows), 0, 0, cv.INTER_LINEAR);
+    small.delete(); k.delete();
+    return bg;
+  }
+  /** Tonwert: Kontrast anheben, Papier sicher weiß */
+  function levels(cv, m, black, white) {
+    const a = 255 / Math.max(1, white - black);
+    m.convertTo(m, -1, a, -black * a);
+  }
+  /**
+   * Bildverbesserung. mode: 'color' (Dokument farbig), 'gray', 'bw' (Schwarzweiß), 'photo' (unverändert).
+   * src: RGBA-Mat. Ergebnis: neue RGBA-Mat.
+   */
+  function enhance(cv, src, mode = 'color') {
+    const out = new cv.Mat();
+    if (mode === 'photo') { src.copyTo(out); return out; }
+    const rgb = new cv.Mat();
+    cv.cvtColor(src, rgb, cv.COLOR_RGBA2RGB);
+    if (mode === 'color') {
+      const chans = new cv.MatVector();
+      cv.split(rgb, chans);
+      const res = new cv.MatVector();
+      for (let i = 0; i < 3; i++) {
+        const c = chans.get(i), bg = background(cv, c), n = new cv.Mat();
+        cv.divide(c, bg, n, 255);
+        levels(cv, n, 35, 232);
+        res.push_back(n);
+        c.delete(); bg.delete(); n.delete();
+      }
+      const merged = new cv.Mat();
+      cv.merge(res, merged);
+      sharpen(cv, merged);
+      cv.cvtColor(merged, out, cv.COLOR_RGB2RGBA);
+      chans.delete(); res.delete(); merged.delete();
+    } else {
+      const gray = new cv.Mat();
+      cv.cvtColor(rgb, gray, cv.COLOR_RGB2GRAY);
+      const bg = background(cv, gray), n = new cv.Mat();
+      cv.divide(gray, bg, n, 255);
+      if (mode === 'bw') {
+        const b = new cv.Mat();
+        cv.GaussianBlur(n, n, new cv.Size(3, 3), 0);
+        cv.adaptiveThreshold(n, b, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 31, 12);
+        cv.cvtColor(b, out, cv.COLOR_GRAY2RGBA);
+        b.delete();
+      } else {
+        levels(cv, n, 40, 230);
+        sharpen(cv, n);
+        cv.cvtColor(n, out, cv.COLOR_GRAY2RGBA);
+      }
+      gray.delete(); bg.delete(); n.delete();
+    }
+    rgb.delete();
+    return out;
+  }
+  function sharpen(cv, m) {
+    const b = new cv.Mat();
+    cv.GaussianBlur(m, b, new cv.Size(0, 0), 1.2);
+    cv.addWeighted(m, 1.6, b, -0.6, 0, m);
+    b.delete();
+  }
+  return { detect, warp, enhance, orderQuad, polyArea, plausible };
+})();
+if (typeof module === 'object' && module.exports) module.exports = ScanCore;
+
+// ---------------------------------------------------------------- Erfassen: Dokumentenscanner und Fotos (Stufe 3)
+// Benötigt aus app.js: $, $$, esc, fold, store, toast, API, S, sync, openNote, VERSION; aus scancore.js: ScanCore; global: fflate
+const Scanner = (() => {
+  const CV_URL = 'opencv.js?v=5.0.0';
+  const LIVE_W = 480;            // Breite der Bilder für die Live-Erkennung
+  const STABLE_N = 7;            // so viele ruhige Erkennungen nacheinander -> automatisch auslösen
+  const STABLE_D = 0.018;        // erlaubte Bewegung der Ecken (Anteil der Bildgröße)
+  const PHOTO_MAX = 2560;        // Fotos: längere Seite höchstens
+  const PHOTO_Q = 0.85, DOC_Q = 0.72;
+  const FILTERS = [['color', 'Farbe'], ['gray', 'Graustufen'], ['bw', 'Schwarzweiß'], ['photo', 'Original']];
+
+  let cvP = null, cv = null;
+  function loadCV() {
+    if (cvP) return cvP;
+    cvP = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = CV_URL; s.async = true;
+      s.onload = async () => {
+        try {
+          let m = window.cv;
+          if (m && typeof m.then === 'function' && !m.Mat) m = await m;
+          else if (m && !m.Mat) await new Promise((r) => { m.onRuntimeInitialized = r; });
+          window.cv = cv = m;
+          resolve(m);
+        } catch (e) { cvP = null; reject(e); }
+      };
+      s.onerror = () => { cvP = null; s.remove(); reject(new Error('Die Bildverarbeitung konnte nicht geladen werden. Bitte die Internetverbindung prüfen.')); };
+      document.head.append(s);
+    });
+    return cvP;
+  }
+
+  // ------------------------------------------------------------ Zustand
+  const st = {
+    el: null, stream: null, track: null, mode: store.get('scanMode', 'doc'), auto: store.get('scanAuto', true), torch: false,
+    pages: [], loopT: null, hist: [], armed: true, lostN: 0, lastQuad: null, capturedQuad: null, busy: false,
+    noteId: null, // bleibt bei einem Fehler erhalten, damit ein erneuter Versuch dieselbe Notiz vervollständigt
+  };
+
+  // ------------------------------------------------------------ Oberfläche
+  function html() {
+    return `
+<div class="sc-cam" id="sccam">
+  <video id="scvideo" playsinline muted autoplay></video>
+  <canvas id="scov"></canvas>
+  <div class="sc-flash" id="scflash"></div>
+  <div class="sc-top">
+    <button class="sc-btn" id="scclose" title="Abbrechen">✕</button>
+    <span class="sc-hint" id="schint">Kamera wird gestartet …</span>
+    <button class="sc-btn" id="sctorch" title="Licht ein/aus">🔦</button>
+    <button class="sc-btn sc-auto" id="scauto" title="Automatisch auslösen ein/aus">AUTO</button>
+  </div>
+  <div class="sc-bottom">
+    <div class="sc-modes"><button data-mode="doc">Dokument</button><button data-mode="photo">Foto</button></div>
+    <div class="sc-row">
+      <label class="sc-side" title="Bilder oder PDFs vom iPhone übernehmen"><input type="file" id="scimport" accept="image/*,application/pdf" multiple hidden><span class="sc-ico">🖼</span><span>Import</span></label>
+      <button class="sc-shutter" id="scshot" title="Aufnehmen"></button>
+      <button class="sc-side sc-done" id="scdone" disabled><span class="sc-thumb" id="scthumb"></span><span id="sccount">Fertig</span></button>
+    </div>
+  </div>
+</div>
+<div class="sc-review hidden" id="screview">
+  <div class="sc-rhead"><button class="btn light" id="scmore">‹ Weitere aufnehmen</button><b id="scrtitle"></b></div>
+  <div class="sc-rbody">
+    <div class="sc-grid" id="scgrid"></div>
+    <div class="sc-form">
+      <label for="sctitle">Titel</label>
+      <input type="text" id="sctitle" autocomplete="off">
+      <label for="scnb">Notizbuch</label>
+      <div class="sc-nb"><input type="search" id="scnb" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Notizbuch suchen"><div class="sc-nblist hidden" id="scnblist"></div></div>
+      <label for="sctext">Text (optional)</label>
+      <textarea id="sctext" rows="3"></textarea>
+      <div class="sc-err" id="scerr"></div>
+      <button class="btn wide" id="scsave">Speichern</button>
+    </div>
+  </div>
+</div>
+<div class="sc-edit hidden" id="scedit">
+  <div class="sc-etop"><button class="btn light" id="sceback">‹ Zurück</button><span id="scetitle"></span><button class="btn" id="scedone">Übernehmen</button></div>
+  <div class="sc-ecanvas"><canvas id="scecv"></canvas></div>
+  <div class="sc-etools">
+    <div class="sc-filters" id="scfilters">${FILTERS.map(([k, t]) => `<button data-f="${k}">${t}</button>`).join('')}</div>
+    <div class="sc-eacts"><button class="btn light" id="scefull">Ganzes Bild</button><button class="btn light" id="scerot">⟳ Drehen</button><button class="btn light" id="scedel">🗑 Löschen</button></div>
+    <p class="sc-ehint">Ecken mit dem Finger auf die Blattecken ziehen.</p>
+  </div>
+</div>
+<div class="sc-busy hidden" id="scbusy"><div class="sc-spin"></div><span id="scbusytext">Bitte warten …</span></div>`;
+  }
+
+  function open() {
+    if (st.el) return;
+    if (!API.auth) { toast('Bitte zuerst anmelden.'); return; }
+    st.pages = []; st.noteId = null; st.hist = []; st.armed = true;
+    const el = document.createElement('div');
+    el.id = 'scanner'; el.className = 'scanner';
+    el.innerHTML = html();
+    document.body.append(el);
+    document.body.classList.add('scanning');
+    st.el = el;
+    bindUi();
+    setMode(st.mode);
+    startCamera();
+    loadCV().then(() => { if (st.el) hint(); }).catch((e) => { if (st.el) setHint(e.message, true); });
+    history.pushState({ scan: true }, '');
+  }
+  function close(force) {
+    if (!st.el) return;
+    if (!force && st.pages.length && !confirm('Aufnahmen verwerfen?')) return;
+    stopCamera();
+    for (const p of st.pages) revokePage(p);
+    st.pages = [];
+    st.el.remove(); st.el = null;
+    document.body.classList.remove('scanning');
+    if (history.state?.scan) history.back();
+  }
+  addEventListener('popstate', () => { if (st.el) close(true); });
+
+  const q = (s) => st.el.querySelector(s);
+  function setHint(t, err) { const h = q('#schint'); if (h) { h.textContent = t; h.classList.toggle('err', !!err); } }
+  function hint() {
+    if (st.mode === 'photo') return setHint('Foto aufnehmen');
+    if (!cv) return setHint('Scanner wird geladen …');
+    setHint(st.auto ? 'Blatt ins Bild halten – löst automatisch aus' : 'Blatt ins Bild halten und auslösen');
+  }
+  function busy(t) { const b = q('#scbusy'); if (!b) return; b.classList.toggle('hidden', !t); if (t) q('#scbusytext').textContent = t; }
+  function setMode(m) {
+    st.mode = m; store.set('scanMode', m);
+    $$('.sc-modes button', st.el).forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+    q('#scauto').classList.toggle('hidden', m !== 'doc');
+    q('#scauto').classList.toggle('on', st.auto);
+    st.hist = []; st.lastQuad = null; drawOverlay(null);
+    hint();
+  }
+
+  function bindUi() {
+    q('#scclose').onclick = () => close();
+    $$('.sc-modes button', st.el).forEach((b) => { b.onclick = () => setMode(b.dataset.mode); });
+    q('#scauto').onclick = () => { st.auto = !st.auto; store.set('scanAuto', st.auto); q('#scauto').classList.toggle('on', st.auto); st.hist = []; hint(); };
+    q('#sctorch').onclick = toggleTorch;
+    q('#scshot').onclick = () => capture(false);
+    q('#scdone').onclick = showReview;
+    q('#scimport').onchange = (e) => { importFiles([...e.target.files]); e.target.value = ''; };
+    q('#scmore').onclick = backToCamera;
+    q('#scsave').onclick = save;
+    q('#sceback').onclick = () => closeEditor(false);
+    q('#scedone').onclick = () => closeEditor(true);
+    q('#scerot').onclick = () => { ed.rot = (ed.rot + 1) % 4; drawEditor(); };
+    q('#scefull').onclick = () => { ed.quad = fullQuad(ed.page.w, ed.page.h); drawEditor(); };
+    q('#scedel').onclick = () => { const i = st.pages.indexOf(ed.page); if (i >= 0) { revokePage(ed.page); st.pages.splice(i, 1); } ed.page = null; q('#scedit').classList.add('hidden'); if (!st.pages.length) backToCamera(); else renderGrid(); };
+    $$('#scfilters button', st.el).forEach((b) => { b.onclick = () => { ed.filter = b.dataset.f; markFilter(); }; });
+    q('#scgrid').onclick = (e) => { const t = e.target.closest('[data-i]'); if (t) openEditor(st.pages[+t.dataset.i]); };
+    bindNotebookPicker();
+    bindEditorDrag();
+  }
+
+  // ------------------------------------------------------------ Kamera
+  async function startCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) { setHint('Die Kamera ist in diesem Browser nicht verfügbar – bitte „Import“ verwenden.', true); return; }
+    try {
+      st.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 4096 }, height: { ideal: 3072 } } });
+      if (!st.el) { stopCamera(); return; }
+      st.track = st.stream.getVideoTracks()[0];
+      const v = q('#scvideo');
+      v.srcObject = st.stream;
+      await v.play().catch(() => {});
+      const caps = st.track.getCapabilities ? st.track.getCapabilities() : {};
+      q('#sctorch').classList.toggle('hidden', !('torch' in caps));
+      hint();
+      loop();
+    } catch (e) {
+      const m = e.name === 'NotAllowedError' ? 'Kein Zugriff auf die Kamera. Bitte in Safari den Kamerazugriff für diese Seite erlauben.' : 'Kamera nicht verfügbar (' + e.name + ').';
+      setHint(m, true);
+    }
+  }
+  function stopCamera() {
+    clearTimeout(st.loopT); st.loopT = null;
+    if (st.stream) st.stream.getTracks().forEach((t) => t.stop());
+    st.stream = null; st.track = null; st.torch = false;
+  }
+  async function toggleTorch() {
+    if (!st.track) return;
+    st.torch = !st.torch;
+    try { await st.track.applyConstraints({ advanced: [{ torch: st.torch }] }); } catch { st.torch = false; }
+    q('#sctorch').classList.toggle('on', st.torch);
+  }
+
+  // ------------------------------------------------------------ Live-Erkennung
+  let liveCanvas = null;
+  function loop() {
+    clearTimeout(st.loopT);
+    if (!st.el || !st.stream) return;
+    const t0 = performance.now();
+    try { if (st.mode === 'doc' && cv && !st.busy) liveStep(); } catch (e) { console.error(e); }
+    const dt = performance.now() - t0;
+    st.loopT = setTimeout(loop, Math.max(60, 140 - dt));
+  }
+  function liveStep() {
+    const v = q('#scvideo');
+    if (!v.videoWidth || q('#sccam').classList.contains('hidden')) return;
+    const s = LIVE_W / Math.max(v.videoWidth, v.videoHeight);
+    const w = Math.round(v.videoWidth * s), h = Math.round(v.videoHeight * s);
+    if (!liveCanvas) liveCanvas = document.createElement('canvas');
+    if (liveCanvas.width !== w || liveCanvas.height !== h) { liveCanvas.width = w; liveCanvas.height = h; }
+    const ctx = liveCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(v, 0, 0, w, h);
+    const m = cv.imread(liveCanvas);
+    let quad = null;
+    try { quad = ScanCore.detect(cv, m); } finally { m.delete(); }
+    const nq = quad ? quad.map((p) => [p[0] / w, p[1] / h]) : null;
+    if (!nq) {
+      st.lostN++; st.hist = [];
+      if (st.lostN > 4) { st.lastQuad = null; drawOverlay(null); if (!st.armed && st.lostN > 6) st.armed = true; }
+      if (st.auto && st.armed) setHint('Blatt ins Bild halten – löst automatisch aus');
+      return;
+    }
+    st.lostN = 0;
+    // geglättete Anzeige
+    st.lastQuad = st.lastQuad ? st.lastQuad.map((p, i) => [p[0] * 0.5 + nq[i][0] * 0.5, p[1] * 0.5 + nq[i][1] * 0.5]) : nq;
+    drawOverlay(st.lastQuad);
+    if (!st.armed && st.capturedQuad && qdist(nq, st.capturedQuad) > 0.12) st.armed = true; // anderes Blatt
+    st.hist.push(nq); if (st.hist.length > STABLE_N) st.hist.shift();
+    const stable = st.hist.length === STABLE_N && st.hist.every((h2) => qdist(h2, nq) < STABLE_D);
+    if (!st.auto) { setHint('Blatt erkannt – jetzt auslösen'); return; }
+    if (!st.armed) { setHint('Aufgenommen – nächstes Blatt hinlegen'); return; }
+    setHint(stable ? 'Aufnahme …' : 'Ruhig halten …');
+    if (stable) { st.armed = false; st.capturedQuad = nq; st.hist = []; capture(true, nq); }
+  }
+  const qdist = (a, b) => Math.max(...a.map((p, i) => Math.hypot(p[0] - b[i][0], p[1] - b[i][1])));
+  /** Anzeigebereich des Videos (object-fit: contain) */
+  function videoRect() {
+    const v = q('#scvideo'), r = v.getBoundingClientRect();
+    const vw = v.videoWidth || 1, vh = v.videoHeight || 1;
+    const s = Math.min(r.width / vw, r.height / vh);
+    return { x: r.left + (r.width - vw * s) / 2, y: r.top + (r.height - vh * s) / 2, w: vw * s, h: vh * s, cr: r };
+  }
+  function drawOverlay(nq) {
+    const c = st.el && q('#scov');
+    if (!c) return;
+    const r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+    if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(r.height * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
+    const ctx = c.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, c.width, c.height);
+    if (!nq) return;
+    const vr = videoRect();
+    ctx.scale(dpr, dpr);
+    ctx.beginPath();
+    nq.forEach((p, i) => { const x = vr.x - r.left + p[0] * vr.w, y = vr.y - r.top + p[1] * vr.h; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(31,138,91,.22)'; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#2ecc71'; ctx.stroke();
+  }
+
+  // ------------------------------------------------------------ Aufnahme
+  async function capture(auto, liveQuad) {
+    const v = q('#scvideo');
+    if (!v || !v.videoWidth || st.busy) return;
+    st.busy = true;
+    try {
+      const w = v.videoWidth, h = v.videoHeight;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(v, 0, 0, w, h);
+      flash();
+      const blob = await toBlob(c, 'image/jpeg', 0.92);
+      c.width = c.height = 1; // Speicher freigeben
+      const kind = st.mode === 'doc' ? 'doc' : 'photo';
+      const page = { kind, blob, w, h, filter: kind === 'doc' ? store.get('scanFilter', 'color') : 'photo', rot: 0, quad: null, out: null, thumb: null };
+      if (kind === 'doc') page.quad = (liveQuad || st.lastQuad || null)?.map((p) => [p[0] * w, p[1] * h]) || null;
+      st.pages.push(page);
+      updateCount();
+      if (kind === 'doc' && !auto) { st.armed = false; st.capturedQuad = st.lastQuad; }
+      prepare(page); // Ecken verfeinern und Vorschau im Hintergrund
+    } catch (e) { console.error(e); toast('Aufnahme fehlgeschlagen: ' + e.message, 5000); }
+    finally { st.busy = false; }
+  }
+  function flash() { const f = q('#scflash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); }
+  function updateCount() {
+    const n = st.pages.length;
+    q('#scdone').disabled = !n;
+    q('#sccount').textContent = n ? `Fertig (${n})` : 'Fertig';
+    const last = st.pages[n - 1];
+    const th = q('#scthumb');
+    th.style.backgroundImage = last ? `url("${last.thumb || (last.thumbRaw ||= URL.createObjectURL(last.blob))}")` : '';
+  }
+  async function importFiles(files) {
+    if (!files.length) return;
+    for (const f of files) {
+      if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) { st.pages.push({ kind: 'file', file: f, name: f.name, w: 0, h: 0 }); continue; }
+      if (!/^image\//.test(f.type) && !/\.(jpe?g|png|heic|heif|webp|gif)$/i.test(f.name)) continue;
+      try {
+        const bmp = await createImageBitmap(f);
+        const page = { kind: st.mode === 'doc' ? 'doc' : 'photo', blob: f, w: bmp.width, h: bmp.height, filter: st.mode === 'doc' ? store.get('scanFilter', 'color') : 'photo', rot: 0, quad: null };
+        bmp.close?.();
+        st.pages.push(page);
+        prepare(page);
+      } catch (e) { toast(`„${f.name}“ kann nicht gelesen werden.`, 5000); }
+    }
+    updateCount();
+    if (st.pages.length) showReview();
+  }
+
+  // ------------------------------------------------------------ Verarbeitung
+  let workQ = Promise.resolve();
+  const enqueue = (fn) => (workQ = workQ.then(fn, fn));
+  async function bitmapCanvas(blob, maxLong) {
+    const bmp = await createImageBitmap(blob);
+    const s = maxLong ? Math.min(1, maxLong / Math.max(bmp.width, bmp.height)) : 1;
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close?.();
+    return c;
+  }
+  const fullQuad = (w, h) => [[0, 0], [w, 0], [w, h], [0, h]];
+  function insetQuad(w, h) { const m = 0.06; return [[w * m, h * m], [w * (1 - m), h * m], [w * (1 - m), h * (1 - m)], [w * m, h * (1 - m)]]; }
+  /** Ecken auf dem Standbild genauer bestimmen, Vorschau erzeugen */
+  function prepare(page) {
+    return enqueue(async () => {
+      if (page.kind === 'doc') {
+        try {
+          await loadCV();
+          const c = await bitmapCanvas(page.blob, 900);
+          const m = cv.imread(c);
+          let qd = null;
+          try { qd = ScanCore.detect(cv, m, { minFrac: 0.1 }); } finally { m.delete(); }
+          const s = page.w / c.width;
+          if (qd) page.quad = qd.map((p) => [p[0] * s, p[1] * s]);
+          if (!page.quad) page.quad = insetQuad(page.w, page.h);
+          page.autoQuad = !!qd;
+        } catch (e) { console.error(e); if (!page.quad) page.quad = insetQuad(page.w, page.h); }
+      } else page.quad = fullQuad(page.w, page.h);
+      await render(page);
+    });
+  }
+  /** Seite fertig verarbeiten: entzerren, verbessern, drehen; Ergebnis als Leinwand */
+  async function render(page) {
+    if (page.kind === 'file') return;
+    const isPhoto = page.kind === 'photo' && page.filter === 'photo' && isFull(page);
+    let out;
+    if (isPhoto) {
+      out = await bitmapCanvas(page.blob, PHOTO_MAX);
+      if (page.rot) out = rotateCanvas(out, page.rot);
+    } else {
+      await loadCV();
+      const src = await bitmapCanvas(page.blob);
+      const m = cv.imread(src);
+      src.width = src.height = 1;
+      let w = null, e = null;
+      try {
+        w = ScanCore.warp(cv, m, page.quad, page.kind === 'photo' ? PHOTO_MAX : 3300);
+        e = ScanCore.enhance(cv, w, page.filter);
+        if (page.rot) cv.rotate(e, e, [cv.ROTATE_90_CLOCKWISE, cv.ROTATE_180, cv.ROTATE_90_COUNTERCLOCKWISE][page.rot - 1]);
+        out = document.createElement('canvas');
+        cv.imshow(out, e);
+      } finally { m.delete(); w?.delete(); e?.delete(); }
+    }
+    // Ergebnis kompakt ablegen (Leinwände belegen auf dem iPhone viel Speicher)
+    if (page.kind === 'doc') page.pdf = await pdfPage(out, page.filter);
+    else page.jpg = await toBlob(out, 'image/jpeg', PHOTO_Q);
+    const tc = document.createElement('canvas');
+    const ts = 360 / Math.max(out.width, out.height);
+    tc.width = Math.round(out.width * ts); tc.height = Math.round(out.height * ts);
+    tc.getContext('2d').drawImage(out, 0, 0, tc.width, tc.height);
+    out.width = out.height = 1;
+    if (page.thumb) URL.revokeObjectURL(page.thumb);
+    page.thumb = URL.createObjectURL(await toBlob(tc, 'image/jpeg', 0.8));
+    page.ready = true;
+    if (st.el) { updateCount(); if (!q('#screview').classList.contains('hidden')) renderGrid(); }
+  }
+  const isFull = (p) => p.quad && p.quad[0][0] === 0 && p.quad[0][1] === 0 && p.quad[2][0] === p.w && p.quad[2][1] === p.h;
+  function rotateCanvas(c, rot) {
+    const r = document.createElement('canvas');
+    const sw = rot % 2 === 1;
+    r.width = sw ? c.height : c.width; r.height = sw ? c.width : c.height;
+    const ctx = r.getContext('2d');
+    ctx.translate(r.width / 2, r.height / 2); ctx.rotate(rot * Math.PI / 2); ctx.drawImage(c, -c.width / 2, -c.height / 2);
+    return r;
+  }
+  function revokePage(p) { if (p.thumb) URL.revokeObjectURL(p.thumb); if (p.thumbRaw) URL.revokeObjectURL(p.thumbRaw); p.pdf = p.jpg = null; }
+  const toBlob = (c, type, qv) => new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('Bild konnte nicht erzeugt werden'))), type, qv));
+
+  // ------------------------------------------------------------ Übersicht und Speichern
+  function showReview() {
+    if (!st.pages.length) return;
+    q('#sccam').classList.add('hidden');
+    q('#screview').classList.remove('hidden');
+    renderGrid();
+    if (!q('#sctitle').value) q('#sctitle').value = defaultTitle();
+    if (!q('#scnb').dataset.id) setNotebook(store.get('scanNotebook', '') || S.settings?.defaultNotebookId || '');
+  }
+  function backToCamera() {
+    q('#screview').classList.add('hidden');
+    q('#sccam').classList.remove('hidden');
+    st.hist = []; st.armed = true; hint();
+  }
+  function defaultTitle() {
+    const kinds = new Set(st.pages.map((p) => p.kind));
+    const d = new Date();
+    const when = d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ', ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    return (kinds.size === 1 && kinds.has('photo') ? 'Foto vom ' : 'Scan vom ') + when;
+  }
+  function renderGrid() {
+    const docs = st.pages.filter((p) => p.kind === 'doc').length, photos = st.pages.filter((p) => p.kind === 'photo').length, files = st.pages.filter((p) => p.kind === 'file').length;
+    const parts = [];
+    if (docs) parts.push(docs === 1 ? '1 Dokumentseite' : docs + ' Dokumentseiten');
+    if (photos) parts.push(photos === 1 ? '1 Foto' : photos + ' Fotos');
+    if (files) parts.push(files === 1 ? '1 Datei' : files + ' Dateien');
+    q('#scrtitle').textContent = parts.join(', ');
+    q('#scgrid').innerHTML = st.pages.map((p, i) => p.kind === 'file'
+      ? `<div class="sc-cell file"><div class="sc-file">PDF</div><span>${esc(p.name)}</span></div>`
+      : `<button class="sc-cell" data-i="${i}">${p.thumb ? `<img src="${p.thumb}" alt="">` : '<div class="sc-spin small"></div>'}<span>${p.kind === 'doc' ? 'Seite ' + (st.pages.filter((x, k) => x.kind === 'doc' && k <= i).length) : 'Foto'}${p.kind === 'doc' && p.autoQuad === false ? ' · Rand prüfen' : ''}</span></button>`).join('')
+      + '<p class="sc-tip">Tippen Sie auf eine Seite, um Ränder, Filter oder Drehung zu ändern.</p>';
+  }
+
+  // Notizbuch-Auswahl (Suchfeld wie im Web-Clipper)
+  function nbLabel(nb) { return nb ? (nb.stack ? nb.stack + ' › ' : '') + nb.name : ''; }
+  function setNotebook(id) {
+    const nb = (S.notebooks || []).find((n) => n.id === id) || (S.notebooks || []).find((n) => n.id === S.settings?.defaultNotebookId) || (S.notebooks || [])[0];
+    const inp = q('#scnb');
+    inp.dataset.id = nb ? nb.id : '';
+    inp.value = nbLabel(nb);
+  }
+  function bindNotebookPicker() {
+    const inp = q('#scnb'), list = q('#scnblist');
+    let sel = 0, items = [];
+    const show = () => {
+      const f = fold(inp.value.trim());
+      const cur = (S.notebooks || []).find((n) => n.id === inp.dataset.id);
+      const all = [...(S.notebooks || [])].sort((a, b) => nbLabel(a).localeCompare(nbLabel(b), 'de'));
+      items = (!f || (cur && inp.value === nbLabel(cur)) ? all : all.filter((n) => fold(nbLabel(n)).includes(f))).slice(0, 60);
+      sel = 0;
+      list.innerHTML = items.length ? items.map((n, i) => `<div class="sc-nbi${i === sel ? ' sel' : ''}" data-id="${esc(n.id)}">${n.stack ? `<small>${esc(n.stack)} ›</small> ` : ''}${esc(n.name)}</div>`).join('') : '<div class="sc-nbnone">Kein Notizbuch gefunden. Neue Notizbücher bitte in der PC-App anlegen.</div>';
+      list.classList.remove('hidden');
+    };
+    const pick = (id) => { setNotebook(id); list.classList.add('hidden'); inp.blur(); };
+    inp.addEventListener('focus', () => { inp.select(); show(); });
+    inp.addEventListener('input', show);
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(0, Math.min(items.length - 1, sel + (e.key === 'ArrowDown' ? 1 : -1))); $$('.sc-nbi', list).forEach((x, i) => x.classList.toggle('sel', i === sel)); }
+      if (e.key === 'Enter') { e.preventDefault(); if (items[sel]) pick(items[sel].id); }
+      if (e.key === 'Escape') { setNotebook(inp.dataset.id); list.classList.add('hidden'); }
+    });
+    list.addEventListener('pointerdown', (e) => { const it = e.target.closest('.sc-nbi'); if (it) { e.preventDefault(); pick(it.dataset.id); } });
+    inp.addEventListener('blur', () => setTimeout(() => { if (!st.el) return; if (!list.contains(document.activeElement)) { list.classList.add('hidden'); setNotebook(inp.dataset.id); } }, 150));
+  }
+
+  async function save() {
+    const btn = q('#scsave'), err = q('#scerr');
+    err.textContent = '';
+    const title = q('#sctitle').value.trim() || defaultTitle();
+    const notebookId = q('#scnb').dataset.id;
+    if (!notebookId) { err.textContent = 'Bitte ein Notizbuch wählen.'; return; }
+    const text = q('#sctext').value.trim();
+    btn.disabled = true;
+    try {
+      busy('Seiten werden aufbereitet …');
+      await workQ; // laufende Vorschauen abwarten
+      for (const p of st.pages) if (p.kind !== 'file' && !p.ready) await render(p);
+      const stamp = title.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').slice(0, 80).trim() || 'Scan';
+      const files = [];
+      const docs = st.pages.filter((p) => p.kind === 'doc');
+      if (docs.length) {
+        busy('PDF wird erstellt …');
+        files.push({ name: stamp + '.pdf', blob: new Blob([makePdf(docs.map((p) => p.pdf), title)], { type: 'application/pdf' }), mime: 'application/pdf', kind: 'pdf' });
+      }
+      let n = 0;
+      for (const p of st.pages) {
+        if (p.kind === 'photo') { n++; files.push({ name: `Foto ${n}.jpg`, blob: p.jpg, mime: 'image/jpeg', kind: 'img' }); }
+        if (p.kind === 'file') files.push({ name: p.name, blob: p.file, mime: 'application/pdf', kind: 'pdf' });
+      }
+      const kind = docs.length || st.pages.some((p) => p.kind === 'file') ? 'scan' : 'foto';
+      const id = await createNote({ title, notebookId, text, files, source: kind }, (t) => busy(t));
+      store.set('scanNotebook', notebookId);
+      busy('');
+      const nb = (S.notebooks || []).find((x) => x.id === notebookId);
+      close(true);
+      await new Promise((r) => setTimeout(r, 120)); // Zurück-Schritt des Verlaufs abwarten
+      toast(`Gespeichert in „${nb ? nb.name : 'Notizbuch'}“`, 3500);
+      await sync();
+      if (S.notes.has(id)) openNote(id);
+    } catch (e) {
+      console.error(e);
+      busy('');
+      err.textContent = 'Speichern fehlgeschlagen: ' + e.message + ' – Ihre Aufnahmen bleiben erhalten; bitte erneut „Speichern“ tippen.';
+      if (e.auth) err.textContent = 'Die Anmeldung bei pCloud ist abgelaufen. Bitte die Seite neu laden und anmelden – die Aufnahmen gehen dabei verloren.';
+    } finally { btn.disabled = false; }
+  }
+
+  // ------------------------------------------------------------ Notiz in pCloud anlegen
+  async function upload(folderid, name, blob) {
+    const p = new URLSearchParams({ auth: API.auth, folderid, nopartial: 1 });
+    const fd = new FormData();
+    fd.append('file', blob, name);
+    let r;
+    try { r = await fetch(API.base() + '/uploadfile?' + p, { method: 'POST', body: fd }); }
+    catch { throw new ApiError(-1, 'Keine Verbindung zu pCloud. Bitte die Internetverbindung prüfen.'); }
+    let j;
+    try { j = await r.json(); } catch { throw new ApiError(r.status || -2, 'Unerwartete Antwort von pCloud beim Hochladen (' + r.status + ').'); }
+    if (j.result) { const e = new ApiError(j.result, j.error || 'Fehler ' + j.result); if (AUTH_ERRORS.has(j.result)) e.auth = true; throw e; }
+    return j.metadata && j.metadata[0];
+  }
+  const mkdir = async (folderid, name) => (await API.call('createfolderifnotexists', { folderid, name }, { post: true })).metadata.folderid;
+  async function notesFolder() {
+    if (S.notesFolderId) return S.notesFolderId;
+    const r = await API.call('listfolder', { path: S.root });
+    if (!(r.metadata.contents || []).some((c) => !c.isfolder && c.name === 'notizen-ablage.json'))
+      throw new ApiError(-3, `Im pCloud-Ordner „${S.root}“ liegt keine Notizen-Ablage.`);
+    S.notesFolderId = await mkdir(r.metadata.folderid, 'notes');
+    return S.notesFolderId;
+  }
+  function noteHtml(id, text, files) {
+    const parts = [];
+    if (text) for (const line of text.split(/\n/)) parts.push(line.trim() ? `<p>${esc(line)}</p>` : '<p></p>');
+    for (const f of files) {
+      const src = `notiz://res/${id}/${encodeURIComponent(f.name)}`;
+      if (f.kind === 'img') parts.push(`<img src="${esc(src)}" alt="${esc(f.name)}">`);
+      else parts.push(`<div data-attachment="" data-src="${esc(src)}" data-name="${esc(f.name)}" data-mime="${esc(f.mime)}" data-size="${f.blob.size}" data-preview="1"></div>`);
+    }
+    parts.push('<p></p>');
+    return parts.join('');
+  }
+  /** Reihenfolge: Ordner, Anhänge, content.html, zuletzt note.json – erst dann gilt die Notiz als vollständig */
+  async function createNote({ title, notebookId, text, files, source }, progress) {
+    const nf0 = await notesFolder();
+    if (!st.noteId) st.noteId = (crypto.randomUUID ? crypto.randomUUID() : ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)));
+    const id = st.noteId;
+    progress('Wird gespeichert …');
+    const nf = await mkdir(nf0, id);
+    if (files.length) {
+      const rf = await mkdir(nf, 'res');
+      let i = 0;
+      for (const f of files) { i++; progress(`Wird hochgeladen … ${i} von ${files.length}`); await upload(rf, f.name, f.blob); }
+    }
+    await upload(nf, 'content.html', new Blob([noteHtml(id, text, files)], { type: 'text/html' }));
+    const now = Date.now();
+    const meta = { id, title, notebookId, tagIds: [], created: now, updated: now, trashed: null, source, sourceUrl: '', author: '', hasOriginal: false, mail: null };
+    await upload(nf, 'note.json', new Blob([JSON.stringify(meta, null, 1)], { type: 'application/json' }));
+    st.noteId = null;
+    return id;
+  }
+
+  // ------------------------------------------------------------ PDF
+  /** Seite für das PDF: Schwarzweiß als 1-Bit-Bild (klein und scharf), sonst JPEG */
+  async function pdfPage(c, filter) {
+    const w = c.width, h = c.height;
+    if (filter === 'bw') {
+      const d = c.getContext('2d').getImageData(0, 0, w, h).data;
+      const row = Math.ceil(w / 8), bits = new Uint8Array(row * h);
+      for (let y = 0; y < h; y++) {
+        const o = y * row, s = y * w * 4;
+        for (let x = 0; x < w; x++) if (d[s + x * 4] >= 128) bits[o + (x >> 3)] |= 0x80 >> (x & 7);
+      }
+      return { w, h, type: 'bw', data: fflate.zlibSync(bits, { level: 6 }) };
+    }
+    return { w, h, type: 'jpeg', data: new Uint8Array(await (await toBlob(c, 'image/jpeg', DOC_Q)).arrayBuffer()) };
+  }
+  function pdfDate(d = new Date()) {
+    const z = (n) => String(n).padStart(2, '0');
+    return `D:${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}`;
+  }
+  function pdfText(s) { // UTF-16BE mit BOM als Hex-Zeichenkette
+    let h = 'FEFF';
+    for (const ch of String(s)) { const c = ch.codePointAt(0); if (c > 0xffff) { const v = c - 0x10000; h += (0xd800 + (v >> 10)).toString(16).padStart(4, '0') + (0xdc00 + (v & 0x3ff)).toString(16).padStart(4, '0'); } else h += c.toString(16).padStart(4, '0'); }
+    return '<' + h.toUpperCase() + '>';
+  }
+  function makePdf(pages, title) {
+    const enc = new TextEncoder();
+    const chunks = []; let off = 0; const offs = [];
+    const push = (x) => { const b = typeof x === 'string' ? enc.encode(x) : x; chunks.push(b); off += b.length; };
+    push('%PDF-1.4\n'); push(new Uint8Array([0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a]));
+    const n = pages.length, infoId = 3 + 3 * n;
+    const obj = (id, body, stream) => {
+      offs[id] = off;
+      push(`${id} 0 obj\n${body}`);
+      if (stream) { push('\nstream\n'); push(stream); push('\nendstream'); }
+      push('\nendobj\n');
+    };
+    obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+    obj(2, `<< /Type /Pages /Count ${n} /Kids [${pages.map((_, i) => `${3 + 3 * i} 0 R`).join(' ')}] >>`);
+    pages.forEach((p, i) => {
+      const id = 3 + 3 * i;
+      // Seitengröße: A4-Breite (bzw. -Höhe im Querformat), Seitenverhältnis des Bildes
+      const A4S = 595.28, A4L = 841.89, r = p.h / p.w;
+      let pw, ph;
+      if (r >= 1) { pw = A4S; ph = Math.abs(r - A4L / A4S) < 0.06 ? A4L : A4S * r; } else { ph = A4S; pw = Math.abs(1 / r - A4L / A4S) < 0.06 ? A4L : A4S / r; }
+      pw = +pw.toFixed(2); ph = +ph.toFixed(2);
+      const content = enc.encode(`q ${pw} 0 0 ${ph} 0 0 cm /Im0 Do Q`);
+      obj(id, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] /Resources << /XObject << /Im0 ${id + 2} 0 R >> >> /Contents ${id + 1} 0 R >>`);
+      obj(id + 1, `<< /Length ${content.length} >>`, content);
+      const img = p.type === 'bw'
+        ? `<< /Type /XObject /Subtype /Image /Width ${p.w} /Height ${p.h} /ColorSpace /DeviceGray /BitsPerComponent 1 /Filter /FlateDecode /Length ${p.data.length} >>`
+        : `<< /Type /XObject /Subtype /Image /Width ${p.w} /Height ${p.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.data.length} >>`;
+      obj(id + 2, img, p.data);
+    });
+    obj(infoId, `<< /Title ${pdfText(title || 'Scan')} /Creator (Notizen Web ${VERSION}) /Producer (Notizen Web ${VERSION}) /CreationDate (${pdfDate()}) >>`);
+    const xref = off, size = infoId + 1;
+    let x = `xref\n0 ${size}\n0000000000 65535 f \n`;
+    for (let i = 1; i < size; i++) x += String(offs[i]).padStart(10, '0') + ' 00000 n \n';
+    push(x + `trailer\n<< /Size ${size} /Root 1 0 R /Info ${infoId} 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+    const out = new Uint8Array(off); let k = 0;
+    for (const c of chunks) { out.set(c, k); k += c.length; }
+    return out;
+  }
+
+  // ------------------------------------------------------------ Seite bearbeiten (Ecken, Filter, Drehen)
+  const ed = { page: null, img: null, scale: 1, quad: null, filter: 'color', rot: 0, drag: -1, box: null };
+  async function openEditor(page) {
+    if (!page || page.kind === 'file') return;
+    ed.page = page; ed.quad = (page.quad || fullQuad(page.w, page.h)).map((p) => [...p]); ed.filter = page.filter; ed.rot = page.rot;
+    q('#scetitle').textContent = page.kind === 'doc' ? 'Seite bearbeiten' : 'Foto bearbeiten';
+    q('#scedit').classList.remove('hidden');
+    markFilter();
+    busy('Bild wird geladen …');
+    try { ed.img = await bitmapCanvas(page.blob, 1600); } finally { busy(''); }
+    drawEditor();
+  }
+  function markFilter() { $$('#scfilters button', st.el).forEach((b) => b.classList.toggle('on', b.dataset.f === ed.filter)); }
+  async function closeEditor(apply) {
+    const p = ed.page;
+    q('#scedit').classList.add('hidden');
+    if (!p) return;
+    if (apply) {
+      const changed = p.filter !== ed.filter || p.rot !== ed.rot || JSON.stringify(p.quad) !== JSON.stringify(ed.quad);
+      p.quad = ed.quad; p.filter = ed.filter; p.rot = ed.rot;
+      if (p.kind === 'doc') store.set('scanFilter', ed.filter);
+      if (changed) { p.thumb && URL.revokeObjectURL(p.thumb); p.thumb = null; p.ready = false; renderGrid(); busy('Seite wird aufbereitet …'); try { await enqueue(() => render(p)); } finally { busy(''); } }
+    }
+    ed.page = null; ed.img = null;
+    renderGrid();
+  }
+  function drawEditor() {
+    const c = q('#scecv'), host = c.parentElement;
+    if (!ed.img) return;
+    const r = host.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+    const sw = ed.rot % 2 === 1; // bei 90°/270° nach dem Drehen eingepasst
+    const s = Math.min((r.width - 28) / (sw ? ed.page.h : ed.page.w), (r.height - 28) / (sw ? ed.page.w : ed.page.h));
+    const w = Math.round(ed.page.w * s), h = Math.round(ed.page.h * s);
+    c.style.width = w + 'px'; c.style.height = h + 'px';
+    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    c.style.transform = ed.rot ? `rotate(${ed.rot * 90}deg)` : '';
+    ed.scale = s;
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.drawImage(ed.img, 0, 0, w, h);
+    const pts = ed.quad.map((p) => [p[0] * s, p[1] * s]);
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    ctx.beginPath(); ctx.rect(0, 0, w, h); pts.slice().reverse().forEach((p, i) => (i ? ctx.lineTo(...p) : ctx.moveTo(...p))); ctx.closePath(); ctx.fill('evenodd');
+    ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(...p) : ctx.moveTo(...p))); ctx.closePath();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#2ecc71'; ctx.stroke();
+    for (const p of pts) { ctx.beginPath(); ctx.arc(p[0], p[1], 13, 0, Math.PI * 2); ctx.fillStyle = 'rgba(46,204,113,.35)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#fff'; ctx.stroke(); }
+  }
+  function bindEditorDrag() {
+    const c = q('#scecv');
+    const toImg = (e) => {
+      // Bildschirmpunkt -> Bildkoordinaten (Drehung der Anzeige um die Mitte berücksichtigen)
+      const r = c.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const dx = e.clientX - cx, dy = e.clientY - cy, a = -ed.rot * Math.PI / 2;
+      const x = dx * Math.cos(a) - dy * Math.sin(a), y = dx * Math.sin(a) + dy * Math.cos(a);
+      const cw = parseFloat(c.style.width), ch = parseFloat(c.style.height);
+      return [(x + cw / 2) / ed.scale, (y + ch / 2) / ed.scale];
+    };
+    c.addEventListener('pointerdown', (e) => {
+      if (!ed.page) return;
+      const p = toImg(e);
+      let best = -1, bd = 44 / ed.scale;
+      ed.quad.forEach((qp, i) => { const d = Math.hypot(qp[0] - p[0], qp[1] - p[1]); if (d < bd) { bd = d; best = i; } });
+      if (best < 0) return;
+      ed.drag = best; c.setPointerCapture(e.pointerId); e.preventDefault();
+    });
+    c.addEventListener('pointermove', (e) => {
+      if (ed.drag < 0) return;
+      const p = toImg(e);
+      ed.quad[ed.drag] = [Math.max(0, Math.min(ed.page.w, p[0])), Math.max(0, Math.min(ed.page.h, p[1]))];
+      drawEditor();
+    });
+    const up = () => { ed.drag = -1; };
+    c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+    addEventListener('resize', () => { if (ed.page) drawEditor(); drawOverlay(st.lastQuad); });
+  }
+
+  return { open, close, loadCV, _st: st, _makePdf: makePdf, _noteHtml: noteHtml };
+})();
 </script>
 </body>
 </html>
