@@ -2353,7 +2353,7 @@ body.editing{overflow:hidden}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.2.3';
+const VERSION = '1.3.0';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -3145,6 +3145,7 @@ async function sync(manual = false) {
     if (S.current && done.some((d) => d.id === S.current) && !$('#view .body-host .loading')) openNote(S.current, { keepScroll: true, noHistory: true });
     setStatus();
     if (manual) toast(done.length || removed.length ? `Aktualisiert: ${done.length} geändert, ${removed.length} entfernt` : 'Alles auf dem neuesten Stand');
+    if (Inbox.load().length) setTimeout(() => Inbox.flush(), 0);
   } catch (e) {
     console.error(e);
     if (e.auth) { logout(true); return; }
@@ -3155,6 +3156,80 @@ async function sync(manual = false) {
     progress(1);
   }
 }
+
+// ---------------------------------------------------------------- Seite aus Safari (Teilen → Kurzbefehl „In Notizen“)
+// Aufruf: …/notizen/#clip=<Adresse der Seite>. Die Web-App legt sofort eine Link-Notiz im Standardnotizbuch an
+// (clipPending); die PC-App lädt die Seite danach selbst und ersetzt die Notiz durch den vollständigen Artikel.
+const Inbox = {
+  busy: false,
+  load() { const q = store.get('clipq', []); return Array.isArray(q) ? q : []; },
+  save(q) { if (q.length) store.set('clipq', q); else store.del('clipq'); },
+  /** Adresse aus dem Aufruf übernehmen und sofort aus der Adresszeile entfernen (kein zweites Anlegen beim Neuladen) */
+  take() {
+    let raw = '';
+    const h = location.hash || '';
+    const i = h.indexOf('clip=');
+    const qs = new URLSearchParams(location.search);
+    if (i >= 0) raw = h.slice(i + 5);
+    else if (qs.get('clip')) raw = qs.get('clip');
+    if (!raw) return false;
+    qs.delete('clip');
+    try { history.replaceState(null, '', location.pathname + (qs.toString() ? '?' + qs : '')); } catch {}
+    let url = raw.trim();
+    if (/^https?%3A/i.test(url)) { try { url = decodeURIComponent(url); } catch {} }
+    if (!/^https?:\/\/[^\s]+$/i.test(url)) { setTimeout(() => toast('Die geteilte Adresse ist keine Webseite: ' + url.slice(0, 80), 6000), 300); return false; }
+    const q = this.load();
+    if (!q.some((x) => x.url === url && Date.now() - x.at < 60e3)) q.push({ id: Scanner.newId(), url, at: Date.now() });
+    this.save(q);
+    return true;
+  },
+  title(url) {
+    try {
+      const u = new URL(url);
+      const host = u.hostname.replace(/^(www|m|mobil|mobile)\./, '');
+      let slug = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() || '').replace(/\.(s?html?|php|aspx?)$/i, '').replace(/[-_]+/g, ' ').replace(/\b[a-z]?\s*\d{5,}\b/gi, '').trim();
+      if (slug.length < 8 || !/[a-zäöü]{3}/i.test(slug)) slug = '';
+      return slug ? `${slug.charAt(0).toUpperCase() + slug.slice(1)} (${host})` : host;
+    } catch { return url; }
+  },
+  async flush() {
+    if (this.busy || !API.auth) return;
+    let q = this.load();
+    if (!q.length) return;
+    this.busy = true;
+    let last = null;
+    try {
+      while (q.length) {
+        const it = q[0];
+        if (!S.notes.has(it.id)) {
+          const nbs = S.notebooks || [];
+          const nb = nbs.find((n) => n.id === S.settings?.defaultNotebookId) || nbs[0];
+          if (!nb) throw new Error('In der Ablage gibt es noch kein Notizbuch.');
+          setStatus('Geteilte Seite wird gespeichert …');
+          const nf = await Scanner.mkdir(await Scanner.notesFolder(), it.id);
+          const u = esc(it.url);
+          const html = `<p><a href="${u}">${u}</a></p><p><em>Vom ${/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'Browser'} gesendet am ${esc(fmtDateTime(it.at))}. ` +
+            'Die Notizen-App am PC lädt die Seite und ersetzt diesen Link durch den vollständigen Artikel.</em></p>';
+          await Scanner.upload(nf, 'content.html', new Blob([html], { type: 'text/html' }));
+          const meta = { id: it.id, title: this.title(it.url), notebookId: nb.id, tagIds: [], created: it.at, updated: it.at, trashed: null, source: 'web', sourceUrl: it.url, author: '', hasOriginal: false, mail: null, clipPending: true };
+          await Scanner.upload(nf, 'note.json', new Blob([JSON.stringify(meta, null, 1)], { type: 'application/json' }));
+          last = { id: it.id, nb: nb.name };
+        }
+        q = this.load().filter((x) => x.id !== it.id);
+        this.save(q);
+      }
+    } catch (e) {
+      console.error(e);
+      if (e.auth) { this.busy = false; logout(true); return; }
+      toast('Die geteilte Seite konnte noch nicht gespeichert werden: ' + e.message + ' – sie wird beim nächsten Abgleich erneut versucht.', 7000);
+    } finally { this.busy = false; setStatus(); }
+    if (last) {
+      toast(`Seite gespeichert in „${last.nb}“`, 4000);
+      await sync();
+      if (S.notes.has(last.id)) openNote(last.id);
+    }
+  },
+};
 
 // ---------------------------------------------------------------- Oberfläche: allgemein
 function progress(f) {
@@ -3906,6 +3981,7 @@ function init() {
   const qs = new URLSearchParams(location.search);
   if (qs.get('api')) { API.override = qs.get('api'); sessionStorage.setItem('nw.api', JSON.stringify(API.override)); }
   else { try { API.override = JSON.parse(sessionStorage.getItem('nw.api') || 'null'); } catch {} }
+  const shared = Inbox.take();
   bind();
   bindResizer();
   $('#email').value = store.get('email', '');
@@ -3915,9 +3991,13 @@ function init() {
     API.auth = auth; API.host = host;
     Cache.enabled = !!store.get('remember', false) && !!localStorage.getItem('nw.auth');
     startApp();
-  } else showLogin();
+  } else {
+    showLogin();
+    if (shared || Inbox.load().length) toast('Bitte anmelden – danach wird die geteilte Seite gespeichert.', 8000);
+  }
 }
 document.addEventListener('DOMContentLoaded', init);
+addEventListener('hashchange', () => { if (/clip=/.test(location.hash) && Inbox.take() && API.auth) Inbox.flush(); });
 </script>
 <script>// ---------------------------------------------------------------- Scanner: Bildverarbeitung (OpenCV)
 // Läuft im Browser (Notizen Web) und zum Testen in Node. Alle Funktionen erhalten das OpenCV-Objekt `cv`.
@@ -5307,6 +5387,7 @@ const Editor = (() => {
           const meta = (await readNoteJson(chk.files['note.json'].fileid)) || {};
           if (htmlNow !== st.initial) await Scanner.upload(st.base.folderid, 'content.html', new Blob([htmlNow], { type: 'text/html' }));
           meta.id = id; meta.title = title; meta.notebookId = notebookId; meta.updated = Date.now();
+          delete meta.clipPending; // selbst bearbeitet: die PC-App ersetzt den Inhalt nicht mehr
           await Scanner.upload(st.base.folderid, 'note.json', new Blob([JSON.stringify(meta, null, 1)], { type: 'application/json' }));
         }
       }
