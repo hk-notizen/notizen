@@ -131,6 +131,11 @@ body.resizing iframe{pointer-events:none}
 .dialog td:first-child{font-family:Consolas,monospace;white-space:nowrap;color:#0b5d3b}
 .dialog p{font-size:14px;line-height:1.5}
 
+/* Notiz über die ganze Breite (Liste und Seitenleiste ausgeblendet) */
+.wide-btn{font-size:14px;white-space:nowrap;color:var(--accent);font-weight:600}
+body.note-wide #app{grid-template-columns:100%}
+body.note-wide #side,body.note-wide #list{display:none}
+body.note-wide .view-inner{max-width:none}
 /* schmale Fenster */
 .only-mobile{display:none!important}
 .only-narrow{display:none}
@@ -151,6 +156,7 @@ body.resizing iframe{pointer-events:none}
   body.show-note #list{display:none}
   body:not(.show-note) #view{display:none}
   .only-mobile{display:inline-block!important}
+  .wide-btn{display:none}
   .view-inner{padding:14px 16px 60px}
   .view-inner h1.title{font-size:21px}
   #list{border-right:0}
@@ -224,7 +230,7 @@ body.resizing iframe{pointer-events:none}
     <div class="resizer" id="resizer" title="Breite der Notizliste ändern (Doppelklick: Standardbreite)"></div>
   </section>
   <main id="view">
-    <div class="view-top"><button class="icon-btn only-mobile" id="backbtn" title="Zurück zur Liste">‹ Liste</button><span class="crumb" id="crumb"></span></div>
+    <div class="view-top"><button class="icon-btn only-mobile" id="backbtn" title="Zurück zur Liste">‹ Liste</button><span class="crumb" id="crumb"></span><button class="icon-btn wide-btn" id="widebtn" title="Notiz über die ganze Breite anzeigen">⤢ Breit</button></div>
     <div class="view-scroll">
       <div id="noview" class="no-note">Wählen Sie links eine Notiz aus.</div>
       <div id="notehost" class="hidden"></div>
@@ -2249,7 +2255,7 @@ body.resizing iframe{pointer-events:none}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.0.7';
+const VERSION = '1.0.8';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -3013,6 +3019,7 @@ function renderSide() {
   setStatus();
 }
 function setView(v) {
+  if (document.body.classList.contains('note-wide')) setWide(false);
   S.view = v;
   S.shown = 0;
   renderSide();
@@ -3617,7 +3624,16 @@ function applyListWidth(w) {
   $('#list').classList.toggle('compact', cur > 0 && cur < 270);
   return w;
 }
+function setWide(on) {
+  document.body.classList.toggle('note-wide', !!on);
+  const b = $('#widebtn');
+  if (b) { b.textContent = on ? '⤡ Liste' : '⤢ Breit'; b.title = on ? 'Notizliste wieder einblenden' : 'Notiz über die ganze Breite anzeigen'; }
+  store.set('wide', !!on);
+  dispatchEvent(new Event('resize'));
+}
 function bindResizer() {
+  $('#widebtn').addEventListener('click', () => setWide(!document.body.classList.contains('note-wide')));
+  setWide(store.get('wide', false));
   const r = $('#resizer');
   applyListWidth(store.get('listw', null));
   let start = 0, startW = 0, w = 0;
