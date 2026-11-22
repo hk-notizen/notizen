@@ -125,6 +125,7 @@ body.resizing iframe{pointer-events:none}
 .dialog h2{margin:0 0 12px;font-size:18px}
 .dialog label{display:block;font-size:13px;color:var(--m);margin:12px 0 4px}
 .dialog input[type=text]{width:100%;padding:8px 10px;border:1px solid #cfd4d9;border-radius:8px}
+.dialog select{width:100%;padding:8px 10px;border:1px solid #cfd4d9;border-radius:8px;background:#fff;font-size:14px}
 .dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
 .dialog table{border-collapse:collapse;width:100%;font-size:13px}
 .dialog td{border-top:1px solid var(--line);padding:6px 6px;vertical-align:top}
@@ -262,6 +263,14 @@ body.editing{overflow:hidden}
 .ed-frame{flex:1;min-height:0;display:flex}
 .ed-frame iframe{flex:1;width:100%;border:0;background:#fff}
 .editor .sc-busy{position:fixed}
+
+/* Links auf Notizen und Notizbücher (1.4.0) */
+.link-btn{white-space:nowrap;font-size:14px}
+.linkbar{position:fixed;left:50%;transform:translateX(-50%);top:max(10px,env(safe-area-inset-top));z-index:60;display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:calc(100vw - 20px);background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.18);padding:10px 12px;font-size:14px}
+.linkbar .lb-t{font-weight:600;flex-basis:100%;padding-right:28px}
+.linkbar .btn{padding:7px 12px;font-size:14px}
+.linkbar .lb-r{display:flex;gap:6px;align-items:center;margin:0;font-size:13px}
+.linkbar .lb-x{position:absolute;top:6px;right:6px}
 </style>
 </head>
 <body>
@@ -310,7 +319,7 @@ body.editing{overflow:hidden}
   <div class="side-shade"></div>
   <section id="list">
     <div class="list-top">
-      <div class="list-head"><button class="icon-btn only-narrow" id="menubtn" title="Notizbücher">☰</button><h2 id="listtitle">Alle Notizen</h2><button class="newbtn" id="newbtn" title="Neue Notiz anlegen">＋ Neu</button></div>
+      <div class="list-head"><button class="icon-btn only-narrow" id="menubtn" title="Notizbücher">☰</button><h2 id="listtitle">Alle Notizen</h2><button class="icon-btn link-btn hidden" id="nblinkbtn" title="Link zu diesem Notizbuch kopieren (zum Einfügen in andere Apps)">🔗</button><button class="newbtn" id="newbtn" title="Neue Notiz anlegen">＋ Neu</button></div>
       <div class="search"><span>🔍</span><input id="q" type="search" placeholder="Notizen durchsuchen" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="icon-btn" id="qclear" title="Suche leeren">✕</button></div>
       <div class="list-meta"><span id="count"></span>
         <select id="sort" title="Sortierung">
@@ -328,7 +337,7 @@ body.editing{overflow:hidden}
     <div class="resizer" id="resizer" title="Breite der Notizliste ändern (Doppelklick: Standardbreite)"></div>
   </section>
   <main id="view">
-    <div class="view-top"><button class="icon-btn only-mobile" id="backbtn" title="Zurück zur Liste">‹ Liste</button><span class="crumb" id="crumb"></span><button class="icon-btn hidden" id="editbtn" title="Notiz bearbeiten">✎ Bearbeiten</button><button class="icon-btn wide-btn" id="widebtn" title="Notiz über die ganze Breite anzeigen">⤢ Breit</button></div>
+    <div class="view-top"><button class="icon-btn only-mobile" id="backbtn" title="Zurück zur Liste">‹ Liste</button><span class="crumb" id="crumb"></span><button class="icon-btn link-btn hidden" id="linkbtn" title="Link zu dieser Notiz kopieren (zum Einfügen in andere Apps)">🔗 Link</button><button class="icon-btn hidden" id="editbtn" title="Notiz bearbeiten">✎ Bearbeiten</button><button class="icon-btn wide-btn" id="widebtn" title="Notiz über die ganze Breite anzeigen">⤢ Breit</button></div>
     <div class="view-scroll">
       <div id="noview" class="no-note">Wählen Sie links eine Notiz aus.</div>
       <div id="notehost" class="hidden"></div>
@@ -2353,7 +2362,7 @@ body.editing{overflow:hidden}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.3.1';
+const VERSION = '1.4.0';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -3146,6 +3155,8 @@ async function sync(manual = false) {
     setStatus();
     if (manual) toast(done.length || removed.length ? `Aktualisiert: ${done.length} geändert, ${removed.length} entfernt` : 'Alles auf dem neuesten Stand');
     if (Inbox.load().length) setTimeout(() => Inbox.flush(), 0);
+    Links.synced = true;
+    if (Links.pending) Links.tryOpen();
   } catch (e) {
     console.error(e);
     if (e.auth) { logout(true); return; }
@@ -3232,6 +3243,123 @@ const Inbox = {
       if (S.notes.has(last.id)) openNote(last.id);
     }
   },
+};
+
+// ---------------------------------------------------------------- Links auf Notizen und Notizbücher (1.4.0)
+// …/notizen/#note=<ID> öffnet die Notiz, …/notizen/#notebook=<ID> das Notizbuch. Die Adresse ist in jeder App anklickbar.
+// Am Windows-PC kann der Link stattdessen die Notizen-App öffnen (notizen://…, wie „In Evernote öffnen“).
+const Links = {
+  BASE: 'https://hk-notizen.github.io/notizen/',
+  pending: null,   // { type, id } – wird geöffnet, sobald die Notizen geladen sind
+  synced: false,   // in dieser Sitzung mindestens einmal abgeglichen
+  url(type, id) { return this.BASE + '#' + (type === 'notebook' ? 'notebook' : 'note') + '=' + encodeURIComponent(id); },
+  appUrl(l) { return 'notizen://' + (l.type === 'notebook' ? 'notebook' : 'note') + '/' + encodeURIComponent(l.id); },
+  parse(h) {
+    const m = /^#(?:[^#]*&)?(note|notebook)=([^&]+)/.exec(h || '');
+    if (!m) return null;
+    let id = m[2];
+    try { id = decodeURIComponent(id); } catch {}
+    return /^[\w.-]{1,80}$/.test(id) ? { type: m[1], id } : null;
+  },
+  /** eigene Linkadresse (auch in Notizen) erkennen */
+  parseHref(h) {
+    const m = /^https:\/\/hk-notizen\.github\.io\/notizen\/?(?:index\.html)?(#.*)$/i.exec(h || '');
+    return m ? this.parse(m[1]) : null;
+  },
+  isPc() { return /Windows/i.test(navigator.userAgent) && !/Mobile|Android|iPhone|iPad/i.test(navigator.userAgent); },
+  pref() { const v = store.get('linkopen', 'ask'); return ['ask', 'app', 'web'].includes(v) ? v : 'ask'; },
+  /** Ziel aus der Adresszeile übernehmen und dort entfernen (Neuladen öffnet nicht erneut) */
+  take() {
+    const l = this.parse(location.hash);
+    if (!l) return null;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch {}
+    this.pending = l;
+    return l;
+  },
+  /** beim Aufruf über einen Link: am PC ggf. gleich die Notizen-App öffnen */
+  route(l) {
+    if (!l) return;
+    if (this.isPc() && this.pref() === 'app') { this.pending = null; this.toApp(l, true); return; }
+    this.tryOpen();
+  },
+  toApp(l, viaLink) {
+    location.href = this.appUrl(l);
+    const what = l.type === 'notebook' ? 'Das Notizbuch' : 'Die Notiz';
+    if (viaLink) {
+      this.bar(`${what} wird in der Notizen-App geöffnet.`, [
+        { label: 'Hier im Browser anzeigen', primary: false, run: () => { this.pending = l; this.tryOpen(); } },
+      ], true);
+    }
+  },
+  /** Ziel öffnen, sobald die Notizen bekannt sind */
+  tryOpen() {
+    const l = this.pending;
+    if (!l || !API.auth || $('#app').classList.contains('hidden')) return;
+    if (l.type === 'notebook') {
+      if (!S.notebooks.some((b) => b.id === l.id)) { if (this.synced) { this.pending = null; toast('Dieses Notizbuch gibt es in der Ablage nicht (mehr).', 5000); } return; }
+      this.pending = null;
+      setView({ type: 'notebook', id: l.id });
+    } else {
+      const rec = S.notes.get(l.id);
+      if (!rec) { if (this.synced) { this.pending = null; toast('Diese Notiz gibt es in der Ablage nicht (mehr).', 5000); } return; }
+      this.pending = null;
+      if (!rec.trashed && S.notebooks.some((b) => b.id === rec.notebookId)) setView({ type: 'notebook', id: rec.notebookId });
+      openNote(l.id);
+    }
+    if (this.isPc() && this.pref() === 'ask') {
+      const what = l.type === 'notebook' ? 'dieses Notizbuch' : 'diese Notiz';
+      this.bar(`Möchten Sie ${what} in der Notizen-App am PC öffnen?`, [
+        { label: 'In der Notizen-App öffnen', primary: true, run: (remember) => { if (remember) store.set('linkopen', 'app'); this.toApp(l, false); } },
+        { label: 'Im Browser bleiben', primary: false, run: (remember) => { if (remember) store.set('linkopen', 'web'); } },
+      ]);
+    }
+  },
+  bar(text, buttons, noRemember) {
+    $('#linkbar')?.remove();
+    const b = document.createElement('div');
+    b.id = 'linkbar';
+    b.className = 'linkbar';
+    b.innerHTML = `<span class="lb-t">${esc(text)}</span>` + buttons.map((x, i) => `<button class="btn${x.primary ? '' : ' light'}" data-i="${i}">${esc(x.label)}</button>`).join('') +
+      (noRemember ? '' : '<label class="check lb-r"><input type="checkbox" id="lbremember"><span>Auswahl merken</span></label>') +
+      '<button class="icon-btn lb-x" data-x title="Schließen">✕</button>';
+    b.addEventListener('click', (e) => {
+      if (e.target.closest('[data-x]')) { b.remove(); return; }
+      const btn = e.target.closest('button[data-i]');
+      if (!btn) return;
+      const remember = !!$('#lbremember', b)?.checked;
+      b.remove();
+      buttons[+btn.dataset.i].run(remember);
+      if (remember) toast('Gemerkt – ändern unter ⚙ Einstellungen.', 4000);
+    });
+    document.body.append(b);
+  },
+  /** Link in die Zwischenablage: reine Adresse und Link mit Titel (für Apps mit Formatierung) */
+  async copy(type, id, title) {
+    const url = this.url(type, id);
+    const html = `<a href="${esc(url)}">${esc(title)}</a>`;
+    const what = type === 'notebook' ? 'Notizbuchlink' : 'Notizlink';
+    try {
+      if (window.ClipboardItem && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([url], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })]);
+      } else await navigator.clipboard.writeText(url);
+      toast(`${what} kopiert – in andere Apps einfügen.`, 3500);
+    } catch (e) {
+      try { await navigator.clipboard.writeText(url); toast(`${what} kopiert – in andere Apps einfügen.`, 3500); return; } catch {}
+      dialog(`<h2>${what}</h2><p>Die Adresse konnte nicht automatisch kopiert werden. Bitte markieren und kopieren:</p><input type="text" id="linkurl" value="${esc(url)}" readonly><div class="row"><button class="btn" data-close>Schließen</button></div>`,
+        (ov) => { const i = $('#linkurl', ov); i.focus(); i.select(); });
+    }
+  },
+  /** am iPhone: Kopieren oder direkt teilen (z. B. an WhatsApp) */
+  offer(type, id, title) {
+    if (!isMobile() || !navigator.share) { this.copy(type, id, title); return; }
+    const what = type === 'notebook' ? 'Notizbuchlink' : 'Notizlink';
+    dialog(`<h2>${what}</h2><p style="word-break:break-all;font-size:13px;color:#6b7280">${esc(title)}</p><div class="row" style="flex-wrap:wrap"><button class="btn light" data-close>Abbrechen</button><button class="btn light" id="lshare">Teilen …</button><button class="btn" id="lcopy">Kopieren</button></div>`, (ov) => {
+      $('#lcopy', ov).onclick = () => { ov.remove(); this.copy(type, id, title); };
+      $('#lshare', ov).onclick = () => { ov.remove(); navigator.share({ title, url: this.url(type, id) }).catch(() => {}); };
+    });
+  },
+  copyCurrentNote() { const rec = S.notes.get(S.current); if (rec) this.offer('note', rec.id, rec.title || 'Ohne Titel'); },
+  copyCurrentNotebook() { const nb = S.view.type === 'notebook' && S.notebooks.find((b) => b.id === S.view.id); if (nb) this.offer('notebook', nb.id, nb.name || 'Notizbuch'); },
 };
 
 // ---------------------------------------------------------------- Oberfläche: allgemein
@@ -3357,6 +3485,7 @@ function runQuery(keep = false) {
 function renderList() {
   const r = S.result;
   $('#listtitle').textContent = S.q.trim() ? 'Suche' : viewName();
+  $('#nblinkbtn')?.classList.toggle('hidden', S.view.type !== 'notebook');
   const scope = S.q.trim() && S.view.type !== 'all' ? ` in „${esc(viewName())}“ · <a href="#" id="searchall">in allen Notizen suchen</a>` : '';
   $('#count').innerHTML = (r ? r.list.length.toLocaleString('de-DE') : 0) + (r && r.list.length === 1 ? ' Notiz' : ' Notizen') + (r?.fuzzy ? ' (ähnliche Schreibweise)' : '') + scope;
   const host = $('#notes');
@@ -3394,6 +3523,7 @@ async function openNote(id, opt = {}) {
   S.current = id;
   S.currentDoc = null;
   $('#editbtn').classList.toggle('hidden', !!rec.trashed);
+  $('#linkbtn').classList.remove('hidden');
   $$('.note-item.active').forEach((e) => e.classList.remove('active'));
   $(`.note-item[data-id="${id}"]`)?.classList.add('active');
   if (isMobile()) {
@@ -3511,6 +3641,8 @@ function renderBody(host, html, ctx) {
     const h = a.getAttribute('href');
     const m = /^notiz:\/\/note\/([0-9a-f-]{36})/i.exec(h);
     if (m) { a.classList.add('notelink'); a.setAttribute('data-note', m[1]); a.setAttribute('href', '#'); continue; }
+    const own = Links.parseHref(h);
+    if (own) { a.classList.add(own.type === 'notebook' ? 'nblink' : 'notelink'); a.setAttribute(own.type === 'notebook' ? 'data-nb' : 'data-note', own.id); a.setAttribute('href', '#'); continue; }
     if (/^notiz:\/\/res\//.test(h)) { const u = urlFor(fileFromSrc(h)); if (u) { a.setAttribute('href', u); a.setAttribute('target', '_blank'); } continue; }
     a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener');
   }
@@ -3566,6 +3698,8 @@ function renderBody(host, html, ctx) {
     const t = ev.target;
     const nl = t.closest('a.notelink');
     if (nl) { ev.preventDefault(); openNote(nl.getAttribute('data-note')); return; }
+    const nbl = t.closest('a.nblink');
+    if (nbl) { ev.preventDefault(); const id = nbl.getAttribute('data-nb'); if (S.notebooks.some((b) => b.id === id)) setView({ type: 'notebook', id }); else toast('Dieses Notizbuch gibt es nicht (mehr).'); return; }
     const pt = t.closest('[data-pdftoggle]');
     if (pt) { togglePdf(pt.closest('.att')); return; }
     const op = t.closest('[data-openfile]');
@@ -3776,9 +3910,14 @@ function showSettings() {
     <label for="rootpath">Ordner der Notizen-Ablage in pCloud</label>
     <input type="text" id="rootpath" value="${esc(S.root)}">
     <p style="font-size:13px;color:#6b7280;margin:6px 0 0">${Cache.enabled ? 'Die Notiztexte werden auf diesem Gerät zwischengespeichert; beim Öffnen wird nur Geändertes nachgeladen.' : 'Auf diesem Gerät wird nichts dauerhaft gespeichert; beim nächsten Öffnen werden die Notizen neu geladen.'}</p>
+    ${Links.isPc() ? `<label for="linkopen">Notiz- und Notizbuchlinks an diesem PC öffnen</label>
+    <select id="linkopen"><option value="ask">Jedes Mal fragen</option><option value="app">In der Notizen-App</option><option value="web">Im Browser</option></select>` : ''}
     <div class="row"><button class="btn light" id="clearcache">Zwischenspeicher leeren</button><button class="btn light" id="logoutbtn">Abmelden</button><button class="btn" id="saveset">Übernehmen</button></div>
     <p style="font-size:12px;color:#9aa1a9;margin:14px 0 0">Notizen Web ${VERSION} · Lesen, Suchen, Bearbeiten, Erfassen (Foto und Dokumentenscanner)</p>`, (ov) => {
+    const lo = $('#linkopen', ov);
+    if (lo) lo.value = Links.pref();
     $('#saveset', ov).onclick = async () => {
+      if (lo) store.set('linkopen', lo.value);
       const v = $('#rootpath', ov).value.trim() || '/Notizen-Ablage';
       ov.remove();
       if (v !== S.root) { S.root = v.startsWith('/') ? v : '/' + v; store.set('root', S.root); await resetData(); sync(true); }
@@ -3834,6 +3973,7 @@ async function afterLogin(host, auth, email, remember) {
   await startApp();
 }
 async function startApp() {
+  $('#toast')?.classList.add('hidden');
   $('#login').classList.add('hidden');
   $('#app').classList.remove('hidden');
   applyListWidth(store.get('listw', null));
@@ -3849,6 +3989,7 @@ async function startApp() {
   }
   renderSide();
   runQuery();
+  if (Links.pending) Links.tryOpen();
   sync();
 }
 
@@ -3919,6 +4060,8 @@ function bind() {
   $('#scanfab').addEventListener('click', () => Scanner.open());
   $('#newbtn').addEventListener('click', () => Editor.openNew());
   $('#editbtn').addEventListener('click', () => Editor.open());
+  $('#linkbtn').addEventListener('click', () => Links.copyCurrentNote());
+  $('#nblinkbtn').addEventListener('click', () => Links.copyCurrentNotebook());
   // Suche
   let qt = null;
   $('#q').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value; runQuery(); }, 220); });
@@ -3986,10 +4129,13 @@ function init() {
   if (qs.get('api')) { API.override = qs.get('api'); sessionStorage.setItem('nw.api', JSON.stringify(API.override)); }
   else { try { API.override = JSON.parse(sessionStorage.getItem('nw.api') || 'null'); } catch {} }
   const shared = Inbox.take();
+  const linked = Links.take();
   bind();
   bindResizer();
   $('#email').value = store.get('email', '');
   $('#remember').checked = store.get('remember', true);
+  // am PC mit „In der Notizen-App öffnen“ gemerkt: gleich weiterreichen
+  if (linked && Links.isPc() && Links.pref() === 'app') Links.route(linked);
   const auth = store.get('auth'), host = store.get('host');
   if (auth && host) {
     API.auth = auth; API.host = host;
@@ -3998,10 +4144,15 @@ function init() {
   } else {
     showLogin();
     if (shared || Inbox.load().length) toast('Bitte anmelden – danach wird die geteilte Seite gespeichert.', 8000);
+    else if (linked && !(Links.isPc() && Links.pref() === 'app')) toast('Bitte anmelden – danach wird ' + (linked.type === 'notebook' ? 'das Notizbuch' : 'die Notiz') + ' geöffnet.', 8000);
   }
 }
 document.addEventListener('DOMContentLoaded', init);
-addEventListener('hashchange', () => { if (/clip=/.test(location.hash) && Inbox.take() && API.auth) Inbox.flush(); });
+addEventListener('hashchange', () => {
+  if (/clip=/.test(location.hash) && Inbox.take() && API.auth) Inbox.flush();
+  const l = Links.take();
+  if (l) Links.route(l);
+});
 </script>
 <script>// ---------------------------------------------------------------- Scanner: Bildverarbeitung (OpenCV)
 // Läuft im Browser (Notizen Web) und zum Testen in Node. Alle Funktionen erhalten das OpenCV-Objekt `cv`.
