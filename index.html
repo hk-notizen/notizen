@@ -280,6 +280,14 @@ body.single #side,body.single #list,body.single .side-shade{display:none!importa
 body.single #view{display:flex!important;grid-column:1;grid-row:1}
 body.single #backbtn,body.single #widebtn{display:none!important}
 body.single .view-inner{max-width:none}
+
+/* Lesefreigabe (1.5.0): nur lesen, ohne Anmeldung */
+body.reader #side,body.reader .side-shade,body.reader #scanfab,body.reader .fab,body.reader #menubtn,body.reader .newbtn,body.reader #scanbtn,body.reader #editbtn,body.reader #linkbtn,body.reader #nblinkbtn,body.reader #allbtn,body.reader #widebtn{display:none!important}
+body.reader #app{grid-template-columns:var(--listw,360px) 1fr}
+body.reader.single #app{grid-template-columns:100%}
+@media (max-width:760px){body.reader #app{grid-template-columns:100%}}
+body.reader #crumb{color:#1f8a5b;font-weight:600}
+.reader-hint{color:#6b7280;padding:40px 20px;text-align:center}
 </style>
 </head>
 <body>
@@ -2371,7 +2379,7 @@ body.single .view-inner{max-width:none}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.4.1';
+const VERSION = '1.5.0';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -2441,6 +2449,11 @@ const API = {
   base(h) { h = h || this.host; return /^https?:\/\//.test(h) ? h.replace(/\/$/, '') : 'https://' + h; },
   scheme() { return this.base().startsWith('http://') ? 'http://' : 'https://'; },
   async call(method, params = {}, opt = {}) {
+    if (Reader.code && !opt.noAuth) { // Lesefreigabe: öffentliche Variante ohne Anmeldung
+      if (method === 'getzip') method = 'getpubzip';
+      params = { ...params, code: Reader.code };
+      opt = { ...opt, noAuth: true };
+    }
     const p = new URLSearchParams();
     if (this.auth && !opt.noAuth) p.set('auth', this.auth);
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') p.set(k, String(v));
@@ -3422,6 +3435,96 @@ const Links = {
   copyCurrentNotebook() { const nb = S.view.type === 'notebook' && S.notebooks.find((b) => b.id === S.view.id); if (nb) this.offer('notebook', nb.id, nb.name || 'Notizbuch'); },
 };
 
+// ---------------------------------------------------------------- Lesefreigaben (1.5.0)
+// …/notizen/#lesen=<code>: freigegebene Notiz bzw. freigegebenes Notizbuch ohne Anmeldung, nur lesend.
+// Die PC-App legt dafür in der Ablage „Freigaben/<Kennung>/“ (freigabe.json + notes/<ID>/…) an und gibt den Ordner
+// über einen öffentlichen pCloud-Link frei. Gelesen wird mit showpublink / getpubzip (ohne Anmeldung).
+const Reader = {
+  code: null,
+  title: '',
+  type: '',
+  take() { const m = /^#lesen=([A-Za-z0-9_-]{4,80})/.exec(location.hash); return m ? m[1] : null; },
+  async start(code) {
+    this.code = code;
+    document.body.classList.add('reader');
+    document.title = 'Notizen – Lesefreigabe';
+    API.auth = null;
+    $('#login').classList.add('hidden');
+    $('#app').classList.remove('hidden');
+    $('#listtitle').textContent = 'Lesefreigabe';
+    $('#count').textContent = '';
+    $('#notes').innerHTML = '<div class="empty">Freigabe wird geladen …</div>';
+    $('#noview').innerHTML = '<div class="reader-hint">Nur lesen – freigegeben aus „Notizen“.</div>';
+    try {
+      let sl = null;
+      for (const host of API.override ? [API.override] : ['eapi.pcloud.com', 'api.pcloud.com']) {
+        const r = await API.call('showpublink', { code, timeformat: 'timestamp' }, { host, noAuth: true, raw: true });
+        sl = r;
+        if (r.result === 0) { API.host = host; break; }
+        if (r.result !== 7001) break; // anderer Fehler (z. B. beendet): nicht beim nächsten Rechenzentrum suchen
+      }
+      if (!sl || sl.result) {
+        const ended = sl && (sl.result === 7002 || sl.result === 7004 || sl.result === 7005);
+        throw new ApiError(sl?.result || -1, ended ? 'Diese Freigabe wurde beendet.' : sl?.result === 7001 ? 'Diese Freigabe gibt es nicht (mehr).' : 'Die Freigabe konnte nicht geladen werden' + (sl ? ` (pCloud-Meldung ${sl.result}).` : '.'));
+      }
+      const items = sl.metadata.contents || [];
+      const fj = items.find((c) => !c.isfolder && c.name === 'freigabe.json');
+      const notesF = items.find((c) => c.isfolder && c.name === 'notes');
+      const scans = (notesF?.contents || []).filter((c) => c.isfolder).map(scanNote).filter((n) => n.files['note.json']);
+      // Freigabe-Beschreibung
+      let info = {};
+      if (fj) { const z = unzip(await API.call('getzip', { fileids: fj.fileid }, { binary: true, post: true })); try { info = JSON.parse(u8text(Object.values(z)[0] || new Uint8Array())); } catch {} }
+      this.title = info.title || 'Freigabe';
+      this.type = info.type === 'notebook' ? 'notebook' : 'note';
+      document.title = this.title + ' – Lesefreigabe';
+      S.notebooks = this.type === 'notebook' ? [{ id: info.id || '__freigabe', name: this.title, stack: '' }] : [];
+      S.tags = [];
+      // Notizen (ohne Anhänge) gebündelt laden: note.json, content.html, Texte für die Suche
+      S.listing = new Map(scans.map((n) => [n.id, n]));
+      let batch = [], size = 0;
+      const flush = async () => {
+        if (!batch.length) return;
+        const exclude = batch.flatMap((n) => n.res.map((f) => f.fileid));
+        const z = unzip(await API.call('getzip', { folderids: batch.map((n) => n.folderid).join(','), excludefileids: exclude.join(',') }, { binary: true, post: true }));
+        for (const n of batch) {
+          const get = (rel) => z[n.id + '/' + rel];
+          let meta = {};
+          try { meta = JSON.parse(u8text(get('note.json') || new Uint8Array()) || '{}'); } catch {}
+          meta.id = n.id;
+          if (this.type === 'notebook') meta.notebookId = S.notebooks[0].id;
+          const texts = {};
+          for (const t of n.text) { const u = get('res/.text/' + t.name); if (u) texts[t.name] = u8text(u); }
+          S.notes.set(n.id, deriveRecord(meta, get('content.html') ? u8text(get('content.html')) : '', texts));
+        }
+        batch = []; size = 0;
+      };
+      let done = 0;
+      for (const n of scans) {
+        batch.push(n);
+        size += [n.files['note.json'], n.files['content.html'], ...n.text].reduce((a, f) => a + (f?.size || 0), 0);
+        if (batch.length >= 200 || size > 20 * 1048576) { await flush(); done += 200; $('#notes').innerHTML = `<div class="empty">Freigabe wird geladen … ${Math.min(done, scans.length)} von ${scans.length}</div>`; }
+      }
+      await flush();
+      await Search.rebuild();
+      S.view = this.type === 'notebook' ? { type: 'notebook', id: S.notebooks[0].id } : { type: 'all' };
+      runQuery();
+      if (this.type === 'note') {
+        document.body.classList.add('single');
+        const id = scans[0]?.id;
+        if (id) await openNote(id, { noHistory: true });
+        else $('#notehost').innerHTML = '<div class="view-inner"><div class="loading">Diese Notiz ist derzeit nicht verfügbar.</div></div>', $('#notehost').classList.remove('hidden'), $('#noview').classList.add('hidden');
+      }
+    } catch (e) {
+      console.error(e);
+      document.body.classList.add('single');
+      $('#noview').classList.add('hidden');
+      $('#notehost').classList.remove('hidden');
+      $('#crumb').textContent = '';
+      $('#notehost').innerHTML = `<div class="view-inner"><div class="loading" style="color:#c2382b">${esc(e.message || 'Fehler beim Laden.')}</div></div>`;
+    }
+  },
+};
+
 // ---------------------------------------------------------------- Oberfläche: allgemein
 function progress(f) {
   const b = $('#progress>div');
@@ -3545,7 +3648,7 @@ function runQuery(keep = false) {
 }
 function renderList() {
   const r = S.result;
-  $('#listtitle').textContent = S.q.trim() ? 'Suche' : viewName();
+  $('#listtitle').textContent = S.q.trim() ? 'Suche' : Reader.code ? Reader.title : viewName();
   $('#nblinkbtn')?.classList.toggle('hidden', S.view.type !== 'notebook');
   const scope = S.q.trim() && S.view.type !== 'all' ? ` in „${esc(viewName())}“ · <a href="#" id="searchall">in allen Notizen suchen</a>` : '';
   $('#count').innerHTML = (r ? r.list.length.toLocaleString('de-DE') : 0) + (r && r.list.length === 1 ? ' Notiz' : ' Notizen') + (r?.fuzzy ? ' (ähnliche Schreibweise)' : '') + scope;
@@ -3594,7 +3697,7 @@ async function openNote(id, opt = {}) {
   const scroller = $('#view .view-scroll');
   const keepTop = opt.keepScroll ? scroller.scrollTop : 0;
   const nb = S.notebooks.find((b) => b.id === rec.notebookId);
-  $('#crumb').textContent = (nb?.stack ? nb.stack + ' › ' : '') + (nb?.name || '');
+  $('#crumb').textContent = Reader.code ? 'Nur lesen' + (Reader.type === 'notebook' ? ' · ' + Reader.title : '') : (nb?.stack ? nb.stack + ' › ' : '') + (nb?.name || '');
   const tags = rec.tagIds.map((t) => S.tags.find((x) => x.id === t)).filter(Boolean);
   const r = lastQuery || { terms: [], phrases: [] };
   const hlTitle = S.q.trim() ? highlight(rec.title || 'Ohne Titel', r.terms, r.phrases) : esc(rec.title || 'Ohne Titel');
@@ -3758,8 +3861,9 @@ function renderBody(host, html, ctx) {
   sr.addEventListener('click', async (ev) => {
     const t = ev.target;
     const nl = t.closest('a.notelink');
-    if (nl) { ev.preventDefault(); const nid = nl.getAttribute('data-note'); if (!S.listing.has(nid) || Links.isSingle()) Links.openSingle(nid); else openNote(nid); return; }
+    if (nl) { ev.preventDefault(); const nid = nl.getAttribute('data-note'); if (Reader.code) { if (S.notes.has(nid)) openNote(nid); else toast('Diese Notiz ist nicht freigegeben.'); return; } if (!S.listing.has(nid) || Links.isSingle()) Links.openSingle(nid); else openNote(nid); return; }
     const nbl = t.closest('a.nblink');
+    if (nbl && Reader.code) { ev.preventDefault(); toast('Dieses Notizbuch ist nicht freigegeben.'); return; }
     if (nbl) { ev.preventDefault(); const id = nbl.getAttribute('data-nb'); if (S.notebooks.some((b) => b.id === id)) setView({ type: 'notebook', id }); else toast('Dieses Notizbuch gibt es nicht (mehr).'); return; }
     const pt = t.closest('[data-pdftoggle]');
     if (pt) { togglePdf(pt.closest('.att')); return; }
@@ -4144,7 +4248,7 @@ function bind() {
   $('#notehost').addEventListener('click', (e) => { const t = e.target.closest('[data-tag]'); if (t) setView({ type: 'tag', id: t.dataset.tag }); });
   addEventListener('popstate', () => { if (isMobile()) showList(); });
   // nach längerer Pause automatisch abgleichen
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && API.auth && !Links.isSingle() && (!S.lastSync || Date.now() - S.lastSync > 5 * 60000)) sync(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && API.auth && !Reader.code && !Links.isSingle() && (!S.lastSync || Date.now() - S.lastSync > 5 * 60000)) sync(); });
 }
 
 /** Breite der Notizliste per Ziehen am rechten Rand einstellen (wird pro Gerät gemerkt) */
@@ -4191,6 +4295,8 @@ function init() {
   const qs = new URLSearchParams(location.search);
   if (qs.get('api')) { API.override = qs.get('api'); sessionStorage.setItem('nw.api', JSON.stringify(API.override)); }
   else { try { API.override = JSON.parse(sessionStorage.getItem('nw.api') || 'null'); } catch {} }
+  const reading = Reader.take();
+  if (reading) { bind(); bindResizer(); Reader.start(reading); return; }
   const shared = Inbox.take();
   const linked = Links.take();
   bind();
@@ -4212,6 +4318,8 @@ function init() {
 }
 document.addEventListener('DOMContentLoaded', init);
 addEventListener('hashchange', () => {
+  if (Reader.take() && Reader.take() !== Reader.code) { location.reload(); return; }
+  if (Reader.code) return;
   if (/clip=/.test(location.hash) && Inbox.take() && API.auth) Inbox.flush();
   const l = Links.take();
   if (l) Links.route(l);
