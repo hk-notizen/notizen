@@ -271,6 +271,15 @@ body.editing{overflow:hidden}
 .linkbar .btn{padding:7px 12px;font-size:14px}
 .linkbar .lb-r{display:flex;gap:6px;align-items:center;margin:0;font-size:13px}
 .linkbar .lb-x{position:absolute;top:6px;right:6px}
+
+/* Einzelansicht beim Öffnen eines Notizlinks (1.4.1) */
+.all-btn{display:none;white-space:nowrap;font-size:14px;color:var(--accent);font-weight:600}
+body.single .all-btn{display:inline-block!important}
+body.single #app{grid-template-columns:100%!important}
+body.single #side,body.single #list,body.single .side-shade{display:none!important}
+body.single #view{display:flex!important;grid-column:1;grid-row:1}
+body.single #backbtn,body.single #widebtn{display:none!important}
+body.single .view-inner{max-width:none}
 </style>
 </head>
 <body>
@@ -337,7 +346,7 @@ body.editing{overflow:hidden}
     <div class="resizer" id="resizer" title="Breite der Notizliste ändern (Doppelklick: Standardbreite)"></div>
   </section>
   <main id="view">
-    <div class="view-top"><button class="icon-btn only-mobile" id="backbtn" title="Zurück zur Liste">‹ Liste</button><span class="crumb" id="crumb"></span><button class="icon-btn link-btn hidden" id="linkbtn" title="Link zu dieser Notiz kopieren (zum Einfügen in andere Apps)">🔗 Link</button><button class="icon-btn hidden" id="editbtn" title="Notiz bearbeiten">✎ Bearbeiten</button><button class="icon-btn wide-btn" id="widebtn" title="Notiz über die ganze Breite anzeigen">⤢ Breit</button></div>
+    <div class="view-top"><button class="icon-btn only-mobile" id="backbtn" title="Zurück zur Liste">‹ Liste</button><button class="icon-btn all-btn" id="allbtn" title="Alle Notizen und Notizbücher anzeigen">‹ Alle Notizen</button><span class="crumb" id="crumb"></span><button class="icon-btn link-btn hidden" id="linkbtn" title="Link zu dieser Notiz kopieren (zum Einfügen in andere Apps)">🔗 Link</button><button class="icon-btn hidden" id="editbtn" title="Notiz bearbeiten">✎ Bearbeiten</button><button class="icon-btn wide-btn" id="widebtn" title="Notiz über die ganze Breite anzeigen">⤢ Breit</button></div>
     <div class="view-scroll">
       <div id="noview" class="no-note">Wählen Sie links eine Notiz aus.</div>
       <div id="notehost" class="hidden"></div>
@@ -2362,7 +2371,7 @@ body.editing{overflow:hidden}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.4.0';
+const VERSION = '1.4.1';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -3300,11 +3309,8 @@ const Links = {
       this.pending = null;
       setView({ type: 'notebook', id: l.id });
     } else {
-      const rec = S.notes.get(l.id);
-      if (!rec) { if (this.synced) { this.pending = null; toast('Diese Notiz gibt es in der Ablage nicht (mehr).', 5000); } return; }
       this.pending = null;
-      if (!rec.trashed && S.notebooks.some((b) => b.id === rec.notebookId)) setView({ type: 'notebook', id: rec.notebookId });
-      openNote(l.id);
+      this.openSingle(l.id);
     }
     if (this.isPc() && this.pref() === 'ask') {
       const what = l.type === 'notebook' ? 'dieses Notizbuch' : 'diese Notiz';
@@ -3313,6 +3319,60 @@ const Links = {
         { label: 'Im Browser bleiben', primary: false, run: (remember) => { if (remember) store.set('linkopen', 'web'); } },
       ]);
     }
+  },
+  /** Einzelansicht (1.4.1): nur diese Notiz, direkt aus ihrem Ordner in pCloud geholt – ohne vorher alles einzulesen */
+  isSingle() { return document.body.classList.contains('single'); },
+  async openSingle(id) {
+    document.body.classList.add('single');
+    document.body.classList.remove('side-open');
+    $('#noview').classList.add('hidden');
+    $('#notehost').classList.remove('hidden');
+    $('#editbtn').classList.add('hidden');
+    $('#linkbtn').classList.add('hidden');
+    $('#crumb').textContent = '';
+    $('#notehost').innerHTML = '<div class="view-inner"><div class="loading">Notiz wird aus pCloud geladen …</div></div>';
+    try {
+      if (!S.notebooks.length) await this.loadMeta();
+      let L = S.listing.get(id);
+      if (!L) {
+        const r = await listFolder({ path: S.root.replace(/\/+$/, '') + '/notes/' + id, recursive: 1 });
+        L = scanNote(r.metadata);
+        if (!L.files['note.json']) throw new ApiError(2005, 'fehlt');
+        S.listing.set(id, L);
+      }
+      if (!S.notes.has(id)) {
+        const z = unzip(await API.call('getzip', { fileids: L.files['note.json'].fileid }, { binary: true, post: true }));
+        const metaJ = JSON.parse(u8text(z['note.json'] || new Uint8Array()) || '{}');
+        metaJ.id = id;
+        S.notes.set(id, deriveRecord(metaJ, '', {}));
+      }
+      if (!this.isSingle()) return; // inzwischen zur Gesamtansicht gewechselt
+      await openNote(id, { noHistory: true });
+    } catch (e) {
+      if (e.auth) { logout(true); return; }
+      const gone = e.code === 2005 || e.code === 2009;
+      $('#notehost').innerHTML = `<div class="view-inner"><div class="loading" style="color:#c2382b">${esc(gone ? 'Diese Notiz gibt es in der Ablage nicht (mehr).' : (e.message || 'Fehler beim Laden.'))}</div></div>`;
+    }
+  },
+  /** Notizbücher und Schlagwörter (kleine Dateien) für die Anzeige laden */
+  async loadMeta() {
+    const root = await listFolder({ path: S.root });
+    const items = root.metadata.contents || [];
+    const files = ['notebooks.json', 'tags.json'].map((n) => items.find((x) => !x.isfolder && x.name === n)).filter(Boolean);
+    if (!files.length) return;
+    const z = unzip(await API.call('getzip', { fileids: files.map((f) => f.fileid).join(',') }, { binary: true, post: true }));
+    const j = (n, d) => { try { return z[n] ? JSON.parse(u8text(z[n])) : d; } catch { return d; } };
+    if (!S.notebooks.length) S.notebooks = j('notebooks.json', []);
+    if (!S.tags.length) S.tags = j('tags.json', []);
+  },
+  /** zur normalen Ansicht mit allen Notizen wechseln (startet beim ersten Mal den Abgleich) */
+  leaveSingle() {
+    if (!this.isSingle()) return;
+    document.body.classList.remove('single');
+    if (isMobile()) { S.current = null; showList(); } // am Handy: Liste statt der eben gezeigten Notiz
+    renderSide();
+    runQuery();
+    if (!this.synced && !S.syncing) sync();
   },
   bar(text, buttons, noRemember) {
     $('#linkbar')?.remove();
@@ -3462,6 +3522,7 @@ function renderSide() {
   setStatus();
 }
 function setView(v) {
+  Links.leaveSingle();
   if (document.body.classList.contains('note-wide')) setWide(false);
   S.view = v;
   S.shown = 0;
@@ -3697,7 +3758,7 @@ function renderBody(host, html, ctx) {
   sr.addEventListener('click', async (ev) => {
     const t = ev.target;
     const nl = t.closest('a.notelink');
-    if (nl) { ev.preventDefault(); openNote(nl.getAttribute('data-note')); return; }
+    if (nl) { ev.preventDefault(); const nid = nl.getAttribute('data-note'); if (!S.listing.has(nid) || Links.isSingle()) Links.openSingle(nid); else openNote(nid); return; }
     const nbl = t.closest('a.nblink');
     if (nbl) { ev.preventDefault(); const id = nbl.getAttribute('data-nb'); if (S.notebooks.some((b) => b.id === id)) setView({ type: 'notebook', id }); else toast('Dieses Notizbuch gibt es nicht (mehr).'); return; }
     const pt = t.closest('[data-pdftoggle]');
@@ -3989,8 +4050,9 @@ async function startApp() {
   }
   renderSide();
   runQuery();
+  const single = Links.pending && Links.pending.type === 'note';
   if (Links.pending) Links.tryOpen();
-  sync();
+  if (!single) sync();
 }
 
 // ---------------------------------------------------------------- Start
@@ -4061,6 +4123,7 @@ function bind() {
   $('#newbtn').addEventListener('click', () => Editor.openNew());
   $('#editbtn').addEventListener('click', () => Editor.open());
   $('#linkbtn').addEventListener('click', () => Links.copyCurrentNote());
+  $('#allbtn').addEventListener('click', () => Links.leaveSingle());
   $('#nblinkbtn').addEventListener('click', () => Links.copyCurrentNotebook());
   // Suche
   let qt = null;
@@ -4081,7 +4144,7 @@ function bind() {
   $('#notehost').addEventListener('click', (e) => { const t = e.target.closest('[data-tag]'); if (t) setView({ type: 'tag', id: t.dataset.tag }); });
   addEventListener('popstate', () => { if (isMobile()) showList(); });
   // nach längerer Pause automatisch abgleichen
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && API.auth && (!S.lastSync || Date.now() - S.lastSync > 5 * 60000)) sync(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && API.auth && !Links.isSingle() && (!S.lastSync || Date.now() - S.lastSync > 5 * 60000)) sync(); });
 }
 
 /** Breite der Notizliste per Ziehen am rechten Rand einstellen (wird pro Gerät gemerkt) */
