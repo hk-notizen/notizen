@@ -2379,7 +2379,7 @@ body.reader #crumb{color:#1f8a5b;font-weight:600}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -2459,16 +2459,25 @@ const API = {
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') p.set(k, String(v));
     const url = this.base(opt.host) + '/' + method;
     let r;
+    // optionales Zeitlimit (ms) für die ganze Anfrage einschließlich Antwort
+    const ac = opt.timeout && window.AbortController ? new AbortController() : null;
+    const timer = ac ? setTimeout(() => ac.abort(), opt.timeout) : null;
+    const timeoutErr = () => new ApiError(-4, 'pCloud antwortet nicht rechtzeitig.');
     try {
-      r = opt.post ? await fetch(url, { method: 'POST', body: p }) : await fetch(url + '?' + p.toString());
-    } catch (e) {
-      throw new ApiError(-1, 'Keine Verbindung zu pCloud. Bitte die Internetverbindung prüfen.');
-    }
-    const ct = r.headers.get('content-type') || '';
-    if (opt.binary && !ct.includes('json')) {
-      if (!r.ok) throw new ApiError(r.status, 'pCloud antwortet mit Fehler ' + r.status);
-      return new Uint8Array(await r.arrayBuffer());
-    }
+      try {
+        const init = ac ? { signal: ac.signal } : {};
+        r = opt.post ? await fetch(url, { method: 'POST', body: p, ...init }) : await fetch(url + '?' + p.toString(), init);
+      } catch (e) {
+        if (ac && ac.signal.aborted) throw timeoutErr();
+        throw new ApiError(-1, 'Keine Verbindung zu pCloud. Bitte die Internetverbindung prüfen.');
+      }
+      const ct = r.headers.get('content-type') || '';
+      if (opt.binary && !ct.includes('json')) {
+        if (!r.ok) throw new ApiError(r.status, 'pCloud antwortet mit Fehler ' + r.status);
+        try { return new Uint8Array(await r.arrayBuffer()); }
+        catch (e) { if (ac && ac.signal.aborted) throw timeoutErr(); throw new ApiError(-1, 'Verbindung zu pCloud unterbrochen.'); }
+      }
+    } finally { if (timer) clearTimeout(timer); }
     let j;
     try { j = await r.json(); } catch { throw new ApiError(r.status || -2, 'Unerwartete Antwort von pCloud (' + r.status + ').'); }
     if (j.result && !opt.raw) {
@@ -3086,6 +3095,7 @@ async function listFolder(params) {
   }
 }
 
+const SYNC_BATCH = 25, SYNC_PARALLEL = 4, SYNC_TIMEOUT = 45000;
 async function sync(manual = false) {
   if (S.syncing || !API.auth) return;
   S.syncing = true;
@@ -3121,29 +3131,39 @@ async function sync(manual = false) {
       for (const f of L.metadata.contents || []) if (f.isfolder) { const n = scanNote(f); if (n.files['note.json']) listing.set(n.id, n); }
     }
     S.listing = listing;
-    const prevSig = S.sigs || new Map();
+    const prevSig = S.sigs || (S.sigs = new Map());
     const changed = [...listing.values()].filter((n) => prevSig.get(n.id) !== noteSig(n));
     const removed = [...S.notes.keys()].filter((id) => !listing.has(id));
     progress(0.12);
-    // geänderte Notizen gebündelt laden (nur Text: note.json, content.html, Anhangstexte)
-    const done = [];
+    // geänderte Notizen gebündelt laden (nur Text: note.json, content.html, Anhangstexte).
+    // Kleine Pakete (pCloud antwortet bei großen Paketen mit vielen Anhängen sehr langsam oder gar nicht),
+    // mehrere gleichzeitig, Zeitlimit mit Wiederholung, Zwischenstand nach jedem Paket im Speicher –
+    // ein Abbruch (z. B. iPhone in den Hintergrund) setzt beim nächsten Abgleich dort fort.
     const total = changed.length;
-    let i = 0;
-    while (i < changed.length) {
+    const queue = [];
+    for (let i = 0; i < changed.length;) {
       const batch = [];
       let bytes = 0;
-      while (i < changed.length && batch.length < 250 && bytes < 25e6) {
+      while (i < changed.length && batch.length < SYNC_BATCH && bytes < 3e6) {
         const n = changed[i++];
         batch.push(n);
         bytes += (n.files['note.json']?.size || 0) + (n.files['content.html']?.size || 0) + n.text.reduce((s, t) => s + (t.size || 0), 0);
       }
-      setStatus(`Lade Notizen … ${Math.min(i, total)} von ${total}`);
+      queue.push({ batch, tries: 0 });
+    }
+    const doneIds = [];
+    const failed = new Set();
+    let loaded = 0, sinceRender = 0;
+    const status = () => setStatus(`Lade Notizen … ${loaded} von ${total}`);
+    if (total) status();
+    const loadBatch = async (batch) => {
       const exclude = [];
       for (const n of batch) {
         for (const [name, f] of Object.entries(n.files)) if (name !== 'note.json' && name !== 'content.html') exclude.push(f.fileid);
         for (const r of n.res) exclude.push(r.fileid);
       }
-      const z = unzip(await API.call('getzip', { folderids: batch.map((n) => n.folderid).join(','), excludefileids: exclude.join(',') }, { binary: true, post: true }));
+      const z = unzip(await API.call('getzip', { folderids: batch.map((n) => n.folderid).join(','), excludefileids: exclude.join(',') }, { binary: true, post: true, timeout: SYNC_TIMEOUT }));
+      const out = [];
       for (const n of batch) {
         const p = n.id + '/';
         let metaJ = null;
@@ -3153,17 +3173,41 @@ async function sync(manual = false) {
         const html = z[p + 'content.html'] ? u8text(z[p + 'content.html']) : '';
         const texts = {};
         for (const k of Object.keys(z)) if (k.startsWith(p + 'res/.text/')) texts[k.slice((p + 'res/.text/').length)] = u8text(z[k]);
-        const rec = deriveRecord(metaJ, html, texts);
-        S.notes.set(n.id, rec);
-        prevSig.set(n.id, noteSig(n));
-        done.push({ id: n.id, sig: noteSig(n), rec });
+        out.push({ id: n.id, sig: noteSig(n), rec: deriveRecord(metaJ, html, texts) });
       }
-      progress(0.12 + 0.75 * (i / Math.max(1, total)));
-      await tick();
-    }
+      return out;
+    };
+    let fatal = null;
+    const worker = async () => {
+      while (queue.length && !fatal) {
+        const job = queue.shift();
+        let got;
+        try { got = await loadBatch(job.batch); }
+        catch (e) {
+          if (e.auth) { fatal = e; return; }
+          job.tries++;
+          if (job.batch.length > 1) { const h = Math.ceil(job.batch.length / 2); queue.push({ batch: job.batch.slice(0, h), tries: 0 }, { batch: job.batch.slice(h), tries: 0 }); }
+          else if (job.tries < 3) queue.push(job);
+          else failed.add(job.batch[0].id);
+          continue;
+        }
+        for (const d of got) { S.notes.set(d.id, d.rec); prevSig.set(d.id, d.sig); doneIds.push(d.id); }
+        if (Cache.enabled) await Cache.putNotes(got);
+        loaded += job.batch.length;
+        sinceRender += got.length;
+        status();
+        progress(0.12 + 0.75 * (loaded / Math.max(1, total)));
+        // Liste zwischendurch auffrischen, damit der Bestand schon während des ersten Abgleichs sichtbar wird
+        if (sinceRender >= 1000) { sinceRender = 0; try { renderSide(); runQuery(true); } catch {} }
+        await tick();
+      }
+    };
+    await Promise.all(Array.from({ length: SYNC_PARALLEL }, worker));
+    if (fatal) throw fatal;
+    const done = doneIds.map((id) => ({ id }));
     for (const id of removed) { S.notes.delete(id); prevSig.delete(id); }
     S.sigs = prevSig;
-    if (Cache.enabled) { await Cache.putNotes(done); await Cache.delNotes(removed); }
+    if (Cache.enabled) await Cache.delNotes(removed);
     // Suchindex
     if (!Search.ms || tagsChanged || done.length > 400) {
       setStatus('Baue Suchindex …');
@@ -3175,7 +3219,8 @@ async function sync(manual = false) {
     runQuery(true);
     if (S.current && done.some((d) => d.id === S.current) && !$('#view .body-host .loading')) openNote(S.current, { keepScroll: true, noHistory: true });
     setStatus();
-    if (manual) toast(done.length || removed.length ? `Aktualisiert: ${done.length} geändert, ${removed.length} entfernt` : 'Alles auf dem neuesten Stand');
+    if (failed.size) toast(`${failed.size} Notiz(en) konnten gerade nicht aus pCloud geladen werden – beim nächsten Abgleich wird es erneut versucht.`, 8000);
+    else if (manual) toast(done.length || removed.length ? `Aktualisiert: ${done.length} geändert, ${removed.length} entfernt` : 'Alles auf dem neuesten Stand');
     if (Inbox.load().length) setTimeout(() => Inbox.flush(), 0);
     Links.synced = true;
     if (Links.pending) Links.tryOpen();
