@@ -2379,7 +2379,7 @@ body.reader #crumb{color:#1f8a5b;font-weight:600}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.5.1';
+const VERSION = '1.5.2';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -2872,15 +2872,65 @@ const isEmptyAtom = (raw) => { const x = parseQuery(raw); return !x.terms.length
 const Search = {
   ms: null,
   indexed: new Set(),
-  create() {
-    return new MiniSearch({
+  isigs: new Map(), // Notiz-ID -> pCloud-Kennung des indizierten Stands (für den gespeicherten Index)
+  ready: true,
+  _readyP: Promise.resolve(),
+  _changes: 0, // Änderungen seit dem letzten Speichern
+  options() {
+    return {
       idField: 'id',
       fields: ['title', 'tags', 'text', 'att', 'meta'],
       storeFields: [],
       tokenize: (s) => tokenize(s),
       processTerm: (t) => { const f = fold(t); return f.length ? f : null; },
       searchOptions: { boost: { title: 4, tags: 2.5, text: 1, att: 0.7, meta: 0.8 }, prefix: true, fuzzy: false, combineWith: 'AND' },
-    });
+    };
+  },
+  create() { return new MiniSearch(this.options()); },
+  whenReady() { return this._readyP; },
+  /**
+   * Beim Öffnen: gespeicherten Suchindex aus dem Gerätespeicher laden und nur Abweichungen nachtragen,
+   * statt ihn aus allen Notiztexten neu aufzubauen (1.5.2). Läuft im Hintergrund; die Liste ist sofort da.
+   */
+  start() {
+    this.ready = false;
+    this._readyP = (async () => {
+      let ok = false;
+      try {
+        const saved = Cache.enabled ? await Cache.getKv('searchIndex') : null;
+        if (saved && saved.v === SEARCH_INDEX_VERSION && saved.tags === JSON.stringify(S.tags) && saved.json) {
+          this.ms = await MiniSearch.loadJSONAsync(saved.json, this.options());
+          this.isigs = new Map(Object.entries(saved.sigs || {}));
+          this.indexed = new Set(this.isigs.keys());
+          const changed = [];
+          for (const id of S.notes.keys()) if (this.isigs.get(id) !== S.sigs.get(id)) changed.push(id);
+          for (const id of this.indexed) if (!S.notes.has(id)) changed.push(id);
+          for (let i = 0; i < changed.length; i += 100) { this._apply(changed.slice(i, i + 100)); await tick(); }
+          this._changes += changed.length;
+          ok = true;
+        }
+      } catch (e) { console.warn('Suchindex nicht geladen', e); }
+      if (!ok) { await this.rebuild(); }
+      this.ready = true;
+      if (this._changes > 200) this.saveLater();
+    })();
+    return this._readyP;
+  },
+  saveLater() {
+    if (!Cache.enabled) return;
+    clearTimeout(this._saveT);
+    // erst speichern, wenn die App eine Weile ruhig ist (Speichern dauert auf dem iPhone einige Sekunden)
+    this._saveT = setTimeout(() => {
+      const go = () => this.save().catch((e) => console.warn('Suchindex nicht gespeichert', e));
+      if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 10000 }); else go();
+    }, 4000);
+  },
+  async save() {
+    if (!Cache.enabled || !this.ms) return;
+    if (!this.ready || S.syncing || this.ms.isVacuuming) { this.saveLater(); return; }
+    const data = { v: SEARCH_INDEX_VERSION, tags: JSON.stringify(S.tags), sigs: Object.fromEntries(this.isigs), json: JSON.stringify(this.ms), saved: Date.now() };
+    this._changes = 0;
+    await Cache.setKv('searchIndex', data);
   },
   doc(rec) {
     const tagNames = rec.tagIds.map((id) => S.tags.find((t) => t.id === id)?.name || '').join(' ');
@@ -2897,14 +2947,20 @@ const Search = {
     }
     this.ms = ms;
     this.indexed = new Set(docs.map((d) => d.id));
+    this.isigs = new Map(docs.map((d) => [d.id, S.sigs.get(d.id)]));
+    this._changes += docs.length + 1;
+  },
+  _apply(ids) {
+    for (const id of ids) {
+      if (this.indexed.has(id)) { this.ms.discard(id); this.indexed.delete(id); this.isigs.delete(id); }
+      const rec = S.notes.get(id);
+      if (rec) { this.ms.add(this.doc(rec)); this.indexed.add(id); this.isigs.set(id, S.sigs.get(id)); }
+    }
   },
   update(ids) {
     if (!this.ms) return;
-    for (const id of ids) {
-      if (this.indexed.has(id)) { this.ms.discard(id); this.indexed.delete(id); }
-      const rec = S.notes.get(id);
-      if (rec) { this.ms.add(this.doc(rec)); this.indexed.add(id); }
-    }
+    this._apply(ids);
+    this._changes += ids.length;
     if (this.ms.dirtCount > 2000) this.ms.vacuum();
   },
   query({ view = { type: 'all' }, q = '', sort = 'updated-desc' } = {}) {
@@ -3095,6 +3151,7 @@ async function listFolder(params) {
   }
 }
 
+const SEARCH_INDEX_VERSION = 1;
 const SYNC_BATCH = 25, SYNC_PARALLEL = 4, SYNC_TIMEOUT = 45000;
 async function sync(manual = false) {
   if (S.syncing || !API.auth) return;
@@ -3208,11 +3265,13 @@ async function sync(manual = false) {
     for (const id of removed) { S.notes.delete(id); prevSig.delete(id); }
     S.sigs = prevSig;
     if (Cache.enabled) await Cache.delNotes(removed);
-    // Suchindex
+    // Suchindex (erst, wenn der gespeicherte Index fertig geladen ist)
+    await Search.whenReady();
     if (!Search.ms || tagsChanged || done.length > 400) {
       setStatus('Baue Suchindex …');
       await Search.rebuild((a, b) => progress(0.87 + 0.12 * (a / b)));
     } else Search.update([...done.map((d) => d.id), ...removed]);
+    if (Search._changes > 200) Search.saveLater();
     S.lastSync = Date.now();
     store.set('lastSync', S.lastSync, Cache.enabled);
     renderSide();
@@ -3684,6 +3743,11 @@ function setView(v) {
 // ---------------------------------------------------------------- Notizliste
 let lastQuery = null;
 function runQuery(keep = false) {
+  if (S.q.trim() && !Search.ready) {
+    $('#notes').innerHTML = '<div class="empty">Suchindex wird geladen … die Treffer erscheinen gleich.</div>';
+    Search.whenReady().then(() => runQuery(keep));
+    return;
+  }
   const r = Search.query({ view: S.view, q: S.q, sort: S.sort });
   S.result = r;
   if (!keep) S.shown = 0;
@@ -4138,7 +4202,7 @@ function showSettings() {
 }
 async function resetData() {
   await Cache.clear();
-  S.notes = new Map(); S.listing = new Map(); S.sigs = new Map(); Search.ms = null; S.current = null;
+  S.notes = new Map(); S.listing = new Map(); S.sigs = new Map(); Search.ms = null; Search.isigs = new Map(); Search._changes = 0; S.current = null;
   renderSide(); runQuery();
   $('#notehost').classList.add('hidden'); $('#noview').classList.remove('hidden');
 }
@@ -4169,7 +4233,7 @@ async function logout(expired) {
   if (auth && !expired) API.call('logout', { auth }, { noAuth: true, raw: true }).catch(() => {});
   store.del('auth'); store.del('host'); store.del('lastSync');
   await Cache.clear();
-  S.notes = new Map(); S.listing = new Map(); S.sigs = new Map(); Search.ms = null; S.current = null; S.lastSync = null;
+  S.notes = new Map(); S.listing = new Map(); S.sigs = new Map(); Search.ms = null; Search.isigs = new Map(); Search._changes = 0; S.current = null; S.lastSync = null;
   revokeBlobs();
   showLogin(expired ? 'Die Anmeldung ist abgelaufen. Bitte erneut anmelden.' : 'Abgemeldet.');
 }
@@ -4195,7 +4259,7 @@ async function startApp() {
     if (meta) { S.notebooks = meta.notebooks || []; S.tags = meta.tags || []; S.searches = meta.searches || []; S.settings = meta.settings || {}; }
     S.sigs = new Map();
     for (const x of all) { S.notes.set(x.id, x.rec); S.sigs.set(x.id, x.sig); }
-    if (all.length) { await Search.rebuild(); }
+    if (all.length) Search.start().then(() => { if (S.q.trim()) runQuery(true); });
   }
   renderSide();
   runQuery();
