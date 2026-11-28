@@ -2382,7 +2382,7 @@ body.reader #crumb{color:#1f8a5b;font-weight:600}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.5.6';
+const VERSION = '1.5.7';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -3577,11 +3577,26 @@ const Reader = {
       S.tags = [];
       // Notizen (ohne Anhänge) gebündelt laden: note.json, content.html, Texte für die Suche
       S.listing = new Map(scans.map((n) => [n.id, n]));
-      let batch = [], size = 0;
-      const flush = async () => {
-        if (!batch.length) return;
-        const exclude = batch.flatMap((n) => n.res.map((f) => f.fileid));
-        const z = unzip(await API.call('getzip', { folderids: batch.map((n) => n.folderid).join(','), excludefileids: exclude.join(',') }, { binary: true, post: true }));
+      // 1.5.7: kleine Pakete, mehrere gleichzeitig, Zeitlimit mit Wiederholung (wie der Abgleich seit 1.5.1) –
+      // große Pakete beantwortet pCloud bei vielen Notizen sehr langsam oder gar nicht
+      const queue = [];
+      for (let i = 0; i < scans.length;) {
+        const batch = [];
+        let bytes = 0;
+        while (i < scans.length && batch.length < SYNC_BATCH && bytes < 3e6) {
+          const n = scans[i++];
+          batch.push(n);
+          bytes += [n.files['note.json'], n.files['content.html'], ...n.text].reduce((a, f) => a + (f?.size || 0), 0);
+        }
+        queue.push({ batch, tries: 0 });
+      }
+      const loadBatch = async (batch) => {
+        const exclude = [];
+        for (const n of batch) {
+          for (const [name, f] of Object.entries(n.files)) if (name !== 'note.json' && name !== 'content.html') exclude.push(f.fileid);
+          for (const r of n.res) exclude.push(r.fileid);
+        }
+        const z = unzip(await API.call('getzip', { folderids: batch.map((n) => n.folderid).join(','), excludefileids: exclude.join(',') }, { binary: true, post: true, timeout: SYNC_TIMEOUT }));
         for (const n of batch) {
           const get = (rel) => z[n.id + '/' + rel];
           let meta = {};
@@ -3592,15 +3607,30 @@ const Reader = {
           for (const t of n.text) { const u = get('res/.text/' + t.name); if (u) texts[t.name] = u8text(u); }
           S.notes.set(n.id, deriveRecord(meta, get('content.html') ? u8text(get('content.html')) : '', texts));
         }
-        batch = []; size = 0;
       };
-      let done = 0;
-      for (const n of scans) {
-        batch.push(n);
-        size += [n.files['note.json'], n.files['content.html'], ...n.text].reduce((a, f) => a + (f?.size || 0), 0);
-        if (batch.length >= 200 || size > 20 * 1048576) { await flush(); done += 200; $('#notes').innerHTML = `<div class="empty">Freigabe wird geladen … ${Math.min(done, scans.length)} von ${scans.length}</div>`; }
-      }
-      await flush();
+      let loaded = 0;
+      const failed = [];
+      const show = () => { $('#notes').innerHTML = `<div class="empty">Freigabe wird geladen … ${loaded} von ${scans.length}</div>`; };
+      if (scans.length > SYNC_BATCH) show();
+      const worker = async () => {
+        while (queue.length) {
+          const job = queue.shift();
+          try { await loadBatch(job.batch); }
+          catch (e) {
+            job.tries++;
+            if (job.batch.length > 1) { const h = Math.ceil(job.batch.length / 2); queue.push({ batch: job.batch.slice(0, h), tries: 0 }, { batch: job.batch.slice(h), tries: 0 }); }
+            else if (job.tries < 3) queue.push(job);
+            else failed.push(job.batch[0].id);
+            continue;
+          }
+          loaded += job.batch.length;
+          if (scans.length > SYNC_BATCH) show();
+          await tick();
+        }
+      };
+      await Promise.all(Array.from({ length: SYNC_PARALLEL }, worker));
+      if (failed.length && !S.notes.size) throw new ApiError(-4, 'Die Freigabe konnte gerade nicht geladen werden (pCloud antwortet nicht). Bitte später erneut öffnen.');
+      if (failed.length) toast(`${failed.length} Notiz(en) konnten gerade nicht geladen werden – bitte die Seite später neu laden.`, 8000);
       await Search.rebuild();
       S.view = this.type === 'notebook' ? { type: 'notebook', id: S.notebooks[0].id } : { type: 'all' };
       runQuery();
