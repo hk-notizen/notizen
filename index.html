@@ -2382,7 +2382,7 @@ body.reader #crumb{color:#1f8a5b;font-weight:600}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.5.5';
+const VERSION = '1.5.6';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -5029,7 +5029,8 @@ const Scanner = (() => {
     q('#screview').classList.remove('hidden');
     renderGrid();
     if (!q('#sctitle').value) q('#sctitle').value = defaultTitle();
-    if (!q('#scnb').dataset.id) setNotebook(store.get('scanNotebook', '') || S.settings?.defaultNotebookId || '');
+    // 1.5.6: immer das Standard-Notizbuch der App vorschlagen (wie Web-Clipper 1.2.3); zuletzt benutztes nur ersatzweise
+    if (!q('#scnb').dataset.id) setNotebook(S.settings?.defaultNotebookId || store.get('scanNotebook', '') || '');
   }
   function backToCamera() {
     q('#screview').classList.add('hidden');
@@ -5449,7 +5450,7 @@ const Editor = (() => {
     if (!API.auth) { toast('Bitte zuerst anmelden.'); return; }
     const v = S.view || {};
     let nb = v.type === 'notebook' ? v.id : v.type === 'stack' ? (S.notebooks.find((n) => n.stack === v.id) || {}).id : null;
-    nb = nb || store.get('scanNotebook', '') || S.settings?.defaultNotebookId || (S.notebooks[0] || {}).id || '';
+    nb = nb || S.settings?.defaultNotebookId || store.get('scanNotebook', '') || (S.notebooks[0] || {}).id || '';
     build({ id: null, isNew: true, title: '', notebookId: nb, html: '<p><br></p>', urlFor: () => null, base: null });
   }
 
