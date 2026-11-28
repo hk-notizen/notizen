@@ -2382,7 +2382,7 @@ body.reader #crumb{color:#1f8a5b;font-weight:600}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.5.4';
+const VERSION = '1.5.5';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -2886,105 +2886,80 @@ function evalBool(node, all, atom, neg = false) {
 }
 const isEmptyAtom = (raw) => { const x = parseQuery(raw); return !x.terms.length && !x.phrases.length && !x.neg.length && !x.negPhrases.length && !x.fields.length; };
 
+/** ähnliche Schreibweise: höchstens 1 Buchstabe Unterschied (ersetzt, eingefügt oder entfernt) */
+function dist1(a, b) {
+  if (a === b) return true;
+  const la = a.length, lb = b.length;
+  if (Math.abs(la - lb) > 1) return false;
+  let i = 0;
+  while (i < la && i < lb && a[i] === b[i]) i++;
+  if (la === lb) return a.slice(i + 1) === b.slice(i + 1);
+  return la > lb ? a.slice(i + 1) === b.slice(i) : a.slice(i) === b.slice(i + 1);
+}
+const WORDCH = /[\p{L}\p{N}]/u;
+/* 1.5.5: Suche direkt in den Notiztexten statt über einen MiniSearch-Index. Der Index (am iPhone als
+   46-MB-Datei gespeichert und beim Öffnen geladen) brachte Safari zum Absturz („wiederholt ein Problem“).
+   Je Notiz wird einmalig eine kleingeschriebene, akzentfreie Fassung aller durchsuchbaren Felder gebildet
+   (gleiche Faltung wie bisher); ein Suchwort trifft – wie die bisherige Präfixsuche – jedes Wort, das damit beginnt. */
 const Search = {
   ms: null,
-  indexed: new Set(),
-  isigs: new Map(), // Notiz-ID -> pCloud-Kennung des indizierten Stands (für den gespeicherten Index)
   ready: true,
   _readyP: Promise.resolve(),
-  _changes: 0, // Änderungen seit dem letzten Speichern
-  options() {
-    return {
-      idField: 'id',
-      fields: ['title', 'tags', 'text', 'att', 'meta'],
-      storeFields: [],
-      tokenize: (s) => tokenize(s),
-      processTerm: (t) => { const f = fold(t); return f.length ? f : null; },
-      searchOptions: { boost: { title: 4, tags: 2.5, text: 1, att: 0.7, meta: 0.8 }, prefix: true, fuzzy: false, combineWith: 'AND' },
-    };
-  },
-  create() { return new MiniSearch(this.options()); },
+  _changes: 0,
+  isigs: new Map(),
+  _hay: new WeakMap(),
   whenReady() { return this._readyP; },
-  /** Suchindex erst bei Bedarf laden (1.5.4): beim ersten Suchen oder 8 s nach dem Öffnen – nicht gleich beim Start
-   *  (spart beim schnellen Öffnen/Schließen rund 300 MB Arbeitsspeicher). */
-  ensure() {
-    if (!this.ms && this.ready && !this._tried) { this._tried = true; this.start(); }
-    return this._readyP;
-  },
-  /**
-   * Beim Öffnen: gespeicherten Suchindex aus dem Gerätespeicher laden und nur Abweichungen nachtragen,
-   * statt ihn aus allen Notiztexten neu aufzubauen (1.5.2). Läuft im Hintergrund; die Liste ist sofort da.
-   */
-  start() {
-    this.ready = false;
-    this._readyP = (async () => {
-      let ok = false;
-      try {
-        const saved = Cache.enabled ? await Cache.getKv('searchIndex') : null;
-        if (saved && saved.v === SEARCH_INDEX_VERSION && saved.tags === JSON.stringify(S.tags) && saved.json) {
-          this.ms = await MiniSearch.loadJSONAsync(saved.json, this.options());
-          this.isigs = new Map(Object.entries(saved.sigs || {}));
-          this.indexed = new Set(this.isigs.keys());
-          const changed = [];
-          for (const id of S.notes.keys()) if (this.isigs.get(id) !== S.sigs.get(id)) changed.push(id);
-          for (const id of this.indexed) if (!S.notes.has(id)) changed.push(id);
-          for (let i = 0; i < changed.length; i += 100) { this._apply(changed.slice(i, i + 100)); await tick(); }
-          this._changes += changed.length;
-          ok = true;
-        }
-      } catch (e) { console.warn('Suchindex nicht geladen', e); }
-      if (!ok) { await this.rebuild(); }
-      this.ready = true;
-      if (this._changes > 200) this.saveLater();
-    })();
-    return this._readyP;
-  },
-  saveLater() {
-    if (!Cache.enabled) return;
-    clearTimeout(this._saveT);
-    // erst speichern, wenn die App eine Weile ruhig ist (Speichern dauert auf dem iPhone einige Sekunden)
-    this._saveT = setTimeout(() => {
-      const go = () => this.save().catch((e) => console.warn('Suchindex nicht gespeichert', e));
-      if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 10000 }); else go();
-    }, 4000);
-  },
-  async save() {
-    if (!Cache.enabled || !this.ms) return;
-    if (!this.ready || S.syncing || this.ms.isVacuuming) { this.saveLater(); return; }
-    const data = { v: SEARCH_INDEX_VERSION, tags: JSON.stringify(S.tags), sigs: Object.fromEntries(this.isigs), json: JSON.stringify(this.ms), saved: Date.now() };
-    this._changes = 0;
-    await Cache.setKv('searchIndex', data);
-  },
-  doc(rec) {
-    const tagNames = rec.tagIds.map((id) => S.tags.find((t) => t.id === id)?.name || '').join(' ');
-    return { id: rec.id, title: rec.title || '', tags: tagNames, text: rec.text || '', att: (rec.attNames || '') + '\n' + (rec.attText || ''), meta: [rec.author, rec.sourceUrl, rec.mail?.from, rec.mail?.to].filter(Boolean).join(' ') };
-  },
-  async rebuild(onProgress) {
-    const ms = this.create();
-    const docs = [...S.notes.values()];
-    const B = 150;
-    for (let i = 0; i < docs.length; i += B) {
-      ms.addAll(docs.slice(i, i + B).map((r) => this.doc(r)));
-      if (onProgress) onProgress(Math.min(i + B, docs.length), docs.length);
-      await tick();
+  ensure() { return this._readyP; },
+  start() { return this._readyP; },
+  saveLater() {},
+  async save() {},
+  async rebuild() { this.reset(); },
+  update() {},
+  reset() { this._hay = new WeakMap(); },
+  hay(n) {
+    let h = this._hay.get(n);
+    if (h === undefined) {
+      const tagNames = (n.tagIds || []).map((id) => S.tags.find((t) => t.id === id)?.name || '').join(' ');
+      h = fold([n.title || '', tagNames, n.text || '', (n.attNames || '') + '\n' + (n.attText || ''), [n.author, n.sourceUrl, n.mail?.from, n.mail?.to].filter(Boolean).join(' ')].join('\n'));
+      this._hay.set(n, h);
     }
-    this.ms = ms;
-    this.indexed = new Set(docs.map((d) => d.id));
-    this.isigs = new Map(docs.map((d) => [d.id, S.sigs.get(d.id)]));
-    this._changes += docs.length + 1;
+    return h;
   },
-  _apply(ids) {
-    for (const id of ids) {
-      if (this.indexed.has(id)) { this.ms.discard(id); this.indexed.delete(id); this.isigs.delete(id); }
-      const rec = S.notes.get(id);
-      if (rec) { this.ms.add(this.doc(rec)); this.indexed.add(id); this.isigs.set(id, S.sigs.get(id)); }
+  /** kommt ein Wort vor, das mit w beginnt? (h und w bereits gefaltet) */
+  has(h, w) {
+    let i = h.indexOf(w);
+    while (i >= 0) {
+      if (i === 0 || !WORDCH.test(h[i - 1])) return true;
+      i = h.indexOf(w, i + 1);
     }
+    return false;
   },
-  update(ids) {
-    if (!this.ms) return;
-    this._apply(ids);
-    this._changes += ids.length;
-    if (this.ms.dirtCount > 2000) this.ms.vacuum();
+  match(n, ws, any) {
+    if (!ws.length) return false;
+    const h = this.hay(n);
+    return any ? ws.some((w) => this.has(h, w)) : ws.every((w) => this.has(h, w));
+  },
+  /** Relevanz (nur für die Sortierung „Relevanz“): Treffer im Titel zählen mehr, dann im übrigen Text */
+  score(n, ws) {
+    const t = fold(n.title || '');
+    let s = 1;
+    for (const w of ws) if (this.has(t, w)) s += 4;
+    return s;
+  },
+  /** Wörter mit ähnlicher Schreibweise zu w in den Notizen der Liste (höchstens 30) */
+  fuzzyTerms(list, w) {
+    const out = new Set();
+    const re = /[\p{L}\p{N}]+/gu;
+    for (const n of list) {
+      const h = this.hay(n);
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(h))) {
+        const t = m[0];
+        if (t.length >= w.length - 1 && t.length <= w.length + 1 && !out.has(t) && dist1(t, w)) { out.add(t); if (out.size >= 30) return [...out]; }
+      }
+    }
+    return [...out];
   },
   query({ view = { type: 'all' }, q = '', sort = 'updated-desc' } = {}) {
     const bool = parseBool(q, isEmptyAtom);
@@ -3033,7 +3008,7 @@ const Search = {
       if (pred) list = list.filter(neg ? (n) => !pred(n) : pred);
     }
     let scores = null, hlTerms = [], fuzzyUsed = false, outPhrases = pq.phrases;
-    if (bool && this.ms) {
+    if (bool) {
       // boolesche Suche: jeden Suchbegriff einzeln auswerten und die Treffermengen verknüpfen
       const byId = new Map(list.map((n) => [n.id, n]));
       const all = new Set(byId.keys());
@@ -3045,7 +3020,8 @@ const Search = {
         let ids = new Set(items.map((n) => n.id));
         if (a.terms.length || a.phrases.length) {
           const words = [...a.terms, ...a.phrases.flatMap((x) => tokenize(x))];
-          const res = this.ms.search(words.join(' '), { filter: (r) => ids.has(r.id), combineWith: a.any ? 'OR' : 'AND', prefix: true });
+          const ws = words.map((w) => fold(w)).filter(Boolean);
+          const res = items.filter((n) => ids.has(n.id) && this.match(n, ws, a.any)).map((n) => ({ id: n.id, score: this.score(n, ws) }));
           let hit = new Set(res.map((r) => r.id));
           if (a.phrases.length) {
             hit = new Set([...hit].filter((id) => {
@@ -3064,7 +3040,7 @@ const Search = {
           ids = hit;
         }
         if (a.neg.length || a.negPhrases.length) {
-          for (const w of a.neg) this.ms.search(w, { prefix: true, fuzzy: false }).forEach((r) => ids.delete(r.id));
+          for (const w of a.neg) { const ws = tokenize(w).map((x) => fold(x)).filter(Boolean); for (const id of [...ids]) { const n = byId.get(id); if (n && this.match(n, ws, false)) ids.delete(id); } }
           if (a.negPhrases.length) for (const id of [...ids]) { const n = byId.get(id); const h = fold([n.title, n.text, n.attText].join('\n')); if (a.negPhrases.some((x) => hasPhrase(h, x))) ids.delete(id); }
         }
         return ids;
@@ -3074,15 +3050,14 @@ const Search = {
       if (sc.size) scores = sc;
       hlTerms = [...termSet];
       outPhrases = phr;
-    } else if ((pq.terms.length || pq.phrases.length) && this.ms) {
-
-      const allowed = new Set(list.map((n) => n.id));
+    } else if (pq.terms.length || pq.phrases.length) {
       const words = [...pq.terms, ...pq.phrases.flatMap((p) => tokenize(p))];
-      let res = this.ms.search(words.join(' '), { filter: (r) => allowed.has(r.id), combineWith: pq.any ? 'OR' : 'AND' });
-      if (!res.length && !pq.phrases.length && !pq.any && words.length === 1) {
+      const ws = words.map((w) => fold(w)).filter(Boolean);
+      let res = list.filter((n) => this.match(n, ws, pq.any)).map((n) => ({ id: n.id, score: this.score(n, ws), terms: ws }));
+      if (!res.length && !pq.phrases.length && !pq.any && ws.length === 1 && ws[0].length >= 5) {
         // nur bei einem einzelnen Suchwort: ähnliche Schreibweise (höchstens 1 Buchstabe Unterschied) zulassen
-        res = this.ms.search(words.join(' '), { filter: (r) => allowed.has(r.id), combineWith: pq.any ? 'OR' : 'AND', fuzzy: (t) => (t.length >= 5 ? 1 : false) });
-        if (res.length) fuzzyUsed = true;
+        const ft = this.fuzzyTerms(list, ws[0]);
+        if (ft.length) { res = list.filter((n) => this.match(n, ft, true)).map((n) => ({ id: n.id, score: 1, terms: ft.filter((t) => this.has(this.hay(n), t)) })); fuzzyUsed = res.length > 0; }
       }
       scores = new Map(res.map((r) => [r.id, r.score]));
       const termSet = new Set();
@@ -3099,9 +3074,9 @@ const Search = {
         });
       }
     }
-    if ((pq.neg.length || pq.negPhrases.length) && this.ms) {
+    if (pq.neg.length || pq.negPhrases.length) {
       const ex = new Set();
-      for (const w of pq.neg) this.ms.search(w, { prefix: true, fuzzy: false }).forEach((r) => ex.add(r.id));
+      for (const w of pq.neg) { const ws = tokenize(w).map((x) => fold(x)).filter(Boolean); if (ws.length) for (const n of list) if (this.match(n, ws, false)) ex.add(n.id); }
       list = list.filter((n) => !ex.has(n.id));
       if (pq.negPhrases.length) list = list.filter((n) => { const h = fold([n.title, n.text, n.attText].join('\n')); return !pq.negPhrases.some((p) => hasPhrase(h, p)); });
     }
@@ -3288,14 +3263,7 @@ async function sync(manual = false) {
     S.sigs = prevSig;
     if (Cache.enabled) await Cache.delNotes(removed);
     // Suchindex (erst, wenn der gespeicherte Index fertig geladen ist)
-    await Search.whenReady();
-    if (Search.ms) {
-      if (tagsChanged || done.length > 400) {
-        setStatus('Baue Suchindex …');
-        await Search.rebuild((a, b) => progress(0.87 + 0.12 * (a / b)));
-      } else Search.update([...done.map((d) => d.id), ...removed]);
-      if (Search._changes > 200) Search.saveLater();
-    } // sonst: Index ist noch nicht geladen – er wird beim ersten Suchen geladen und dabei nachgeführt
+    if (tagsChanged) Search.reset(); // Schlagwortnamen gehören zum durchsuchbaren Text
     S.lastSync = Date.now();
     store.set('lastSync', S.lastSync, Cache.enabled);
     renderSide();
@@ -3778,11 +3746,6 @@ async function listingOf(id) {
 // ---------------------------------------------------------------- Notizliste
 let lastQuery = null;
 function runQuery(keep = false) {
-  if (S.q.trim() && (!Search.ready || (!Search.ms && !Search._tried))) {
-    $('#notes').innerHTML = '<div class="empty">Suchindex wird geladen … die Treffer erscheinen gleich.</div>';
-    Search.ensure().then(() => runQuery(keep));
-    return;
-  }
   const r = Search.query({ view: S.view, q: S.q, sort: S.sort });
   S.result = r;
   if (!keep) S.shown = 0;
@@ -4293,6 +4256,7 @@ async function startApp() {
     setStatus('Lade gespeicherte Notizen …');
     const all = await Cache.allNotes();
     const meta = await Cache.getKv('meta');
+    Cache.tx('kv', 'readwrite', (s) => s.delete('searchIndex')); // gespeicherter Suchindex bis 1.5.4 – nicht mehr benötigt
     if (meta) { S.notebooks = meta.notebooks || []; S.tags = meta.tags || []; S.searches = meta.searches || []; S.settings = meta.settings || {}; }
     S.sigs = new Map();
     for (const x of all) { S.notes.set(x.id, x.rec); S.sigs.set(x.id, x.sig); }
@@ -4304,13 +4268,6 @@ async function startApp() {
   // Abgleich beim Öffnen nur, wenn der letzte länger als 5 Minuten zurückliegt (1.5.4: schnelles
   // Öffnen/Schließen lud sonst jedes Mal die komplette Dateiliste aus pCloud); kurz verzögert.
   if (!single && (!S.notes.size || !S.lastSync || Date.now() - S.lastSync > 5 * 60000)) setTimeout(() => sync(), 1500);
-  // Suchindex im Hintergrund nachladen, wenn die App 8 Sekunden im Vordergrund ist und kein Abgleich läuft
-  // (beim schnellen Öffnen/Schließen also nicht; wer früher sucht, löst das Laden sofort aus).
-  if (!single) (async () => {
-    await sleep(8000);
-    while (S.syncing || document.visibilityState !== 'visible') await sleep(2000);
-    if (S.notes.size) Search.ensure();
-  })();
 }
 
 // ---------------------------------------------------------------- Start
@@ -4385,7 +4342,6 @@ function bind() {
   $('#nblinkbtn').addEventListener('click', () => Links.copyCurrentNotebook());
   // Suche
   let qt = null;
-  $('#q').addEventListener('focus', () => Search.ensure());
   $('#q').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value; runQuery(); }, 220); });
   $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(qt); S.q = e.target.value; runQuery(); e.target.blur(); } if (e.key === 'Escape') { e.target.value = ''; S.q = ''; runQuery(); } });
   $('#qclear').addEventListener('click', () => { $('#q').value = ''; S.q = ''; runQuery(); });
