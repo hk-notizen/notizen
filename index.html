@@ -2382,7 +2382,7 @@ body.reader #crumb{color:#1f8a5b;font-weight:600}
 <script>'use strict';
 /* Notizen Web – Lesen und Suchen in der Notizen-Ablage über die pCloud-Programmierschnittstelle.
    Läuft komplett im Browser; die Notizen bleiben in pCloud. */
-const VERSION = '1.5.3';
+const VERSION = '1.5.4';
 
 // ---------------------------------------------------------------- Hilfsfunktionen
 const $ = (s, r = document) => r.querySelector(s);
@@ -2775,21 +2775,35 @@ function highlight(text, terms, phrases = []) {
   return out + esc(text.slice(pos));
 }
 const PUA = /[\uE000-\uF8FF\uFFFD]/g; // Symbolschrift-Zeichen (z. B. aus Web-Seiten), die als Kästchen erscheinen würden
+function firstHit(folded, terms, phrases) {
+  let best = -1, len = 0;
+  for (const p of phrases) { const r = phraseRanges(folded, p); if (r.length) { best = r[0][0]; len = r[0][1] - r[0][0]; break; } }
+  if (best < 0) {
+    for (const t of terms) {
+      if (!t) continue;
+      let i = folded.indexOf(t);
+      while (i > 0 && /[\p{L}\p{N}]/u.test(folded[i - 1])) i = folded.indexOf(t, i + 1);
+      if (i >= 0 && (best < 0 || i < best)) { best = i; len = t.length; }
+    }
+  }
+  return [best, len];
+}
 function makeSnippet(text, terms, phrases) {
   if (!text) return null;
   text = text.replace(PUA, '');
-  const { folded, map } = foldWithMap(text.length > 200000 ? text.slice(0, 200000) : text);
-  let best = -1;
-  for (const p of phrases) { const r = phraseRanges(folded, p); if (r.length) { best = r[0][0]; break; } }
-  if (best < 0) {
-    for (const t of terms) {
-      let i = folded.indexOf(t);
-      while (i > 0 && /[\p{L}\p{N}]/u.test(folded[i - 1])) i = folded.indexOf(t, i + 1);
-      if (i >= 0 && (best < 0 || i < best)) best = i;
-    }
+  if (text.length > 200000) text = text.slice(0, 200000);
+  // 1.5.4: erst im einmal gefalteten Text suchen (schnell); die zeichengenaue Zuordnung nur für einen
+  // Bereich um die Fundstelle (vorher: Zeichen für Zeichen über den ganzen Text, bei jeder Notiz der Liste).
+  const [hit] = firstHit(fold(text), terms, phrases);
+  if (hit < 0) return null;
+  let o = -1;
+  for (const margin of [400, 4000]) {
+    const a = Math.max(0, hit - margin), b = Math.min(text.length, hit + margin);
+    const { folded, map } = foldWithMap(text.slice(a, b));
+    const [h] = firstHit(folded, terms, phrases);
+    if (h >= 0) { o = a + map[h]; break; }
   }
-  if (best < 0) return null;
-  const o = map[best];
+  if (o < 0) { const { folded, map } = foldWithMap(text); const [h] = firstHit(folded, terms, phrases); if (h < 0) return null; o = map[h]; }
   const start = Math.max(0, o - 70);
   const s = text.slice(start, start + 240).replace(/\s+/g, ' ');
   return (start > 0 ? '… ' : '') + highlight(s, terms, phrases);
@@ -2891,6 +2905,12 @@ const Search = {
   },
   create() { return new MiniSearch(this.options()); },
   whenReady() { return this._readyP; },
+  /** Suchindex erst bei Bedarf laden (1.5.4): beim ersten Suchen oder 8 s nach dem Öffnen – nicht gleich beim Start
+   *  (spart beim schnellen Öffnen/Schließen rund 300 MB Arbeitsspeicher). */
+  ensure() {
+    if (!this.ms && this.ready && !this._tried) { this._tried = true; this.start(); }
+    return this._readyP;
+  },
   /**
    * Beim Öffnen: gespeicherten Suchindex aus dem Gerätespeicher laden und nur Abweichungen nachtragen,
    * statt ihn aus allen Notiztexten neu aufzubauen (1.5.2). Läuft im Hintergrund; die Liste ist sofort da.
@@ -3038,7 +3058,6 @@ const Search = {
           if (!negated) {
             for (const r of res) if (hit.has(r.id)) sc.set(r.id, (sc.get(r.id) || 0) + r.score);
             const free = a.terms.map((w) => fold(w));
-            res.slice(0, 300).forEach((r) => r.terms.forEach((t) => { if (free.some((w) => t.startsWith(w))) termSet.add(t); }));
             free.forEach((w) => termSet.add(w));
             phr.push(...a.phrases);
           }
@@ -3068,8 +3087,8 @@ const Search = {
       scores = new Map(res.map((r) => [r.id, r.score]));
       const termSet = new Set();
       const free = pq.terms.map((w) => fold(w));
-      res.slice(0, 300).forEach((r) => r.terms.forEach((t) => { if (!pq.phrases.length || free.some((w) => t.startsWith(w))) termSet.add(t); }));
       free.forEach((w) => termSet.add(w));
+      if (fuzzyUsed) { for (const r of res.slice(0, 50)) for (const t of r.terms) { if (termSet.size >= free.length + 30) break; termSet.add(t); } }
       hlTerms = [...termSet];
       list = list.filter((n) => scores.has(n.id));
       if (pq.phrases.length) {
@@ -3270,11 +3289,13 @@ async function sync(manual = false) {
     if (Cache.enabled) await Cache.delNotes(removed);
     // Suchindex (erst, wenn der gespeicherte Index fertig geladen ist)
     await Search.whenReady();
-    if (!Search.ms || tagsChanged || done.length > 400) {
-      setStatus('Baue Suchindex …');
-      await Search.rebuild((a, b) => progress(0.87 + 0.12 * (a / b)));
-    } else Search.update([...done.map((d) => d.id), ...removed]);
-    if (Search._changes > 200) Search.saveLater();
+    if (Search.ms) {
+      if (tagsChanged || done.length > 400) {
+        setStatus('Baue Suchindex …');
+        await Search.rebuild((a, b) => progress(0.87 + 0.12 * (a / b)));
+      } else Search.update([...done.map((d) => d.id), ...removed]);
+      if (Search._changes > 200) Search.saveLater();
+    } // sonst: Index ist noch nicht geladen – er wird beim ersten Suchen geladen und dabei nachgeführt
     S.lastSync = Date.now();
     store.set('lastSync', S.lastSync, Cache.enabled);
     renderSide();
@@ -3743,12 +3764,23 @@ function setView(v) {
   $('#notes').scrollTop = 0;
 }
 
+/** Dateiliste einer einzelnen Notiz aus pCloud holen (wenn seit dem Öffnen noch kein Abgleich lief) */
+async function listingOf(id) {
+  try {
+    const r = await listFolder({ path: S.root.replace(/\/+$/, '') + '/notes/' + id, recursive: 1 });
+    const L = scanNote(r.metadata);
+    if (!L.files['note.json']) return null;
+    S.listing.set(id, L);
+    return L;
+  } catch (e) { if (e.code === 2005) return null; throw e; }
+}
+
 // ---------------------------------------------------------------- Notizliste
 let lastQuery = null;
 function runQuery(keep = false) {
-  if (S.q.trim() && !Search.ready) {
+  if (S.q.trim() && (!Search.ready || (!Search.ms && !Search._tried))) {
     $('#notes').innerHTML = '<div class="empty">Suchindex wird geladen … die Treffer erscheinen gleich.</div>';
-    Search.whenReady().then(() => runQuery(keep));
+    Search.ensure().then(() => runQuery(keep));
     return;
   }
   const r = Search.query({ view: S.view, q: S.q, sort: S.sort });
@@ -3826,7 +3858,9 @@ async function openNote(id, opt = {}) {
   $('#notehost').classList.remove('hidden');
   scroller.scrollTop = keepTop;
   try {
-    const L = S.listing.get(id);
+    let L = S.listing.get(id);
+    if (!L) L = await listingOf(id);
+    if (seq !== openSeq) return;
     if (!L) throw new Error('Die Notiz ist in pCloud nicht mehr vorhanden. Bitte aktualisieren.');
     const LIMIT = 15 * 1048576;
     const want = [L.files['content.html'], ...L.res.filter((f) => f.size <= LIMIT)].filter(Boolean);
@@ -3973,7 +4007,7 @@ function renderBody(host, html, ctx) {
   sr.addEventListener('click', async (ev) => {
     const t = ev.target;
     const nl = t.closest('a.notelink');
-    if (nl) { ev.preventDefault(); const nid = nl.getAttribute('data-note'); if (Reader.code) { if (S.notes.has(nid)) openNote(nid); else toast('Diese Notiz ist nicht freigegeben.'); return; } if (!S.listing.has(nid) || Links.isSingle()) Links.openSingle(nid); else openNote(nid); return; }
+    if (nl) { ev.preventDefault(); const nid = nl.getAttribute('data-note'); if (Reader.code) { if (S.notes.has(nid)) openNote(nid); else toast('Diese Notiz ist nicht freigegeben.'); return; } if (!S.notes.has(nid) || Links.isSingle()) Links.openSingle(nid); else openNote(nid); return; }
     const nbl = t.closest('a.nblink');
     if (nbl && Reader.code) { ev.preventDefault(); toast('Dieses Notizbuch ist nicht freigegeben.'); return; }
     if (nbl) { ev.preventDefault(); const id = nbl.getAttribute('data-nb'); if (S.notebooks.some((b) => b.id === id)) setView({ type: 'notebook', id }); else toast('Dieses Notizbuch gibt es nicht (mehr).'); return; }
@@ -4262,13 +4296,21 @@ async function startApp() {
     if (meta) { S.notebooks = meta.notebooks || []; S.tags = meta.tags || []; S.searches = meta.searches || []; S.settings = meta.settings || {}; }
     S.sigs = new Map();
     for (const x of all) { S.notes.set(x.id, x.rec); S.sigs.set(x.id, x.sig); }
-    if (all.length) Search.start().then(() => { if (S.q.trim()) runQuery(true); });
   }
   renderSide();
   runQuery();
   const single = Links.pending && Links.pending.type === 'note';
   if (Links.pending) Links.tryOpen();
-  if (!single) sync();
+  // Abgleich beim Öffnen nur, wenn der letzte länger als 5 Minuten zurückliegt (1.5.4: schnelles
+  // Öffnen/Schließen lud sonst jedes Mal die komplette Dateiliste aus pCloud); kurz verzögert.
+  if (!single && (!S.notes.size || !S.lastSync || Date.now() - S.lastSync > 5 * 60000)) setTimeout(() => sync(), 1500);
+  // Suchindex im Hintergrund nachladen, wenn die App 8 Sekunden im Vordergrund ist und kein Abgleich läuft
+  // (beim schnellen Öffnen/Schließen also nicht; wer früher sucht, löst das Laden sofort aus).
+  if (!single) (async () => {
+    await sleep(8000);
+    while (S.syncing || document.visibilityState !== 'visible') await sleep(2000);
+    if (S.notes.size) Search.ensure();
+  })();
 }
 
 // ---------------------------------------------------------------- Start
@@ -4343,6 +4385,7 @@ function bind() {
   $('#nblinkbtn').addEventListener('click', () => Links.copyCurrentNotebook());
   // Suche
   let qt = null;
+  $('#q').addEventListener('focus', () => Search.ensure());
   $('#q').addEventListener('input', (e) => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value; runQuery(); }, 220); });
   $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(qt); S.q = e.target.value; runQuery(); e.target.blur(); } if (e.key === 'Escape') { e.target.value = ''; S.q = ''; runQuery(); } });
   $('#qclear').addEventListener('click', () => { $('#q').value = ''; S.q = ''; runQuery(); });
